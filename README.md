@@ -1,4 +1,4 @@
-# Merlin Server
+# Merlin Standalone Server
 
 A standalone read-it-later backend for Merlin - no Nextcloud installation
 required. Plain PHP 8.4, no framework, SQLite storage, and its own account
