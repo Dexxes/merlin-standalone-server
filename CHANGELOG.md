@@ -4,7 +4,7 @@ All notable changes to merlin-server are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning based on
 [SemVer](https://semver.org/).
 
-## [Unreleased]
+## v1.0
 
 ### Added
 - Standalone read-it-later server: no Nextcloud dependency, SQLite storage,
