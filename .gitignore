@@ -5,3 +5,6 @@
 /data/*.sqlite-shm
 /data/*.log
 /config/config.php
+composer.phar
+.vscode
+STRUCTURE.md
