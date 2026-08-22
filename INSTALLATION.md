@@ -8,10 +8,32 @@ Document-Root sein.
 
 ## 1. Abhängigkeiten installieren
 
+Composer wird nur für diesen einen Schritt gebraucht (danach läuft
+merlin-server rein über den PHP-Interpreter, ohne Composer im Zugriff).
+
+**Composer bereits installiert** (`composer --version` meldet eine Version):
+
 ```bash
 cd merlin-server
 composer install --no-dev
 ```
+
+**Composer fehlt**: entweder über den Paketmanager der Distribution
+installieren (z. B. `apt install composer` auf Debian/Ubuntu), oder ohne
+System-Installation direkt im Projektverzeichnis herunterladen:
+
+```bash
+cd merlin-server
+php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+php composer-setup.php
+php -r "unlink('composer-setup.php');"
+php composer.phar install --no-dev
+```
+
+Das erzeugt `composer.phar` im Projektverzeichnis (dient nur der lokalen
+Installation, kann danach gelöscht werden) und legt `vendor/` an. Prüfsumme
+des Installer-Skripts vor dem Ausführen verifizieren, siehe
+[offizielle Composer-Anleitung](https://getcomposer.org/download/).
 
 ## 2. Konfiguration anlegen
 
