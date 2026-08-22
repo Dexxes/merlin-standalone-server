@@ -1,0 +1,22 @@
+# Bei Subfolder-Deployment (public/ ist nicht selbst Document-Root, siehe
+# unten) liegen composer.json/.lock/.phar, .gitignore und die .md-Dateien
+# direkt neben public/ im Webroot - ohne diese Sperre würde die Rewrite-Regel
+# sie unverändert durchreichen, da sie als echte Dateien existieren.
+<FilesMatch "\.(json|lock|phar|md)$">
+    Require all denied
+</FilesMatch>
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Alles, was hier keine echte Datei ist, an public/ weiterreichen (aber
+    # REQUEST_URI bleibt unverändert) - public/.htaccess entscheidet dann
+    # selbst, ob es eine echte Datei dort ist (z.B. public/css/merlin.css)
+    # oder auf public/index.php geroutet werden muss. So muss diese Logik
+    # nicht dupliziert werden.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

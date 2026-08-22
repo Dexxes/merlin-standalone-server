@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  
+-->
+<domain name="m.youtube.com">
+  <category>Video</category>
+  <pre-filter />
+  <post-filter />
+  <metadata>
+    <title   xpath="//meta[@property='og:title']/@content" />
+    <excerpt xpath="//meta[@name='description']/@content" />
+    <image   xpath="//meta[@property='og:image']/@content" />
+  </metadata>
+</domain>

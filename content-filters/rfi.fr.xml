@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: heise.de
+
+  Verfügbare Sektionen:
+    <pre-filter>   – Regeln, die auf das rohe HTML VOR dem Readability-Durchlauf angewendet werden
+    <post-filter>  – Regeln, die auf den von Readability extrahierten HTML-Content angewendet werden
+    <metadata>     – XPath-Regeln zur domain-spezifischen Metadaten-Extraktion (überschreibt Readability)
+
+  Regeltypen (in pre-filter und post-filter):
+    <remove id="element-id" />           – Entfernt Elemente mit genau dieser id
+    <remove class="teilstring" />        – Entfernt Elemente, deren class diesen Teilstring enthält
+    <remove xpath="//div[@data-ad]" />   – Entfernt alle Elemente, die dem XPath entsprechen
+
+  Metadaten-Felder (in <metadata>):
+    <title    xpath="..." />   – Seitentitel
+    <author   xpath="..." />   – Autorenname
+    <excerpt  xpath="..." />   – Teaser / Zusammenfassung
+    <image    xpath="..." />   – Bild-URL (bei @content-Attributen: xpath="//meta[...]/@content")
+    <published xpath="..." />  – Veröffentlichungsdatum (ISO 8601 oder deutsches Format)
+-->
+<domain name="rfi.fr">
+
+  <pre-filter>
+    <remove class="t-content__chapo" />
+    <remove class="a-read-more" />
+    <remove class="t-content__dates t-content__dates--reading-time" />
+  </pre-filter>
+
+  <post-filter>
+    <!-- Hier post-Readability-Remove-Regeln eintragen -->
+  </post-filter>
+
+  <metadata>
+    <author   xpath="//a[@class='m-from-author__name']" />
+    <!-- Beispiele:
+    <title    xpath="//h1[@class='article-title']" />
+    <author   xpath="//span[@class='author-name']" />
+    <excerpt  xpath="//p[@class='article-intro']" />
+    <image    xpath="//meta[@property='og:image']/@content" />
+    <published xpath="//time[@itemprop='datePublished']/@datetime" />
+    -->
+  </metadata>
+
+</domain>

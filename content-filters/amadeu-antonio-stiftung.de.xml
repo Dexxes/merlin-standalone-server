@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: amadeu-antonio-stiftung.de
+
+  Verfügbare Sektionen:
+    <pre-filter>   – Regeln, die auf das rohe HTML VOR dem Readability-Durchlauf angewendet werden
+    <post-filter>  – Regeln, die auf den von Readability extrahierten HTML-Content angewendet werden
+    <metadata>     – XPath-Regeln zur domain-spezifischen Metadaten-Extraktion (überschreibt Readability)
+
+  Regeltypen (in pre-filter und post-filter):
+    <remove id="element-id" />           – Entfernt Elemente mit genau dieser id
+    <remove class="teilstring" />        – Entfernt Elemente, deren class diesen Teilstring enthält
+    <remove xpath="//div[@data-ad]" />   – Entfernt alle Elemente, die dem XPath entsprechen
+
+  Hintergrund (siehe auch die Analyse im Chat):
+  Die "Spenden"-Box (<nav id="donation-box">) liegt als direktes Geschwisterelement
+  INNERHALB von <article id="post-...">, gleich nach .entry-content. Sie trägt
+  Tailwind-Utility-Klassen wie "fixed", "pin-l", "pin-b", "absolute", "sticky",
+  die auf der Original-Seite die Box am Bildschirmrand fixieren. Weder ihre id
+  ("donation-box") noch die des Seiten-Footers ("colophon") matchen Readabilitys
+  eingebaute "unlikely candidates"-Stichwortliste (sidebar/footer/share/…), daher
+  wird beides mitextrahiert und landet als Rohtext mitten im Artikel.
+-->
+<domain name="amadeu-antonio-stiftung.de">
+
+  <pre-filter>
+    <!-- Fixierte "Spenden"-Box innerhalb des <article>-Elements -->
+    <remove id="donation-box" />
+    <remove id="donation-box-mobile" />
+
+    <!-- Partner-Logo-Leiste und sitewide Footer (Kontakt, Spendenkonto, Socials, Menü) -->
+    <remove id="partner" />
+    <remove id="colophon" />
+
+    <!-- Newsletter-Popup (normalerweise per CSS versteckt, bis getriggert) -->
+    <remove class="subscription-pop-up" />
+  </pre-filter>
+
+  <post-filter>
+    <!-- Hier post-Readability-Remove-Regeln eintragen -->
+  </post-filter>
+
+  <metadata>
+    <!-- Kein Bedarf: og:title/og:description/article:modified_time decken den Fall ab -->
+  </metadata>
+
+</domain>

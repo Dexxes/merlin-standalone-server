@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: npr.org
+
+  Erstellt anhand von NPR.har (Beispiel-Artikel "The 2010s: Social Media And
+  The Birth Of Stan Culture", 2019-10-17) und ContentExtractorService.php.
+
+  KEINE Consent-/Session-Cookies nötig: Der in NPR.har aufgezeichnete Request
+  ging ohne ein einziges Cookie raus (leere Cookie-Liste in der HAR-Aufnahme)
+  und bekam direkt ein 200 mit vollem Artikel-HTML zurück – anders als z. B.
+  golem.de gibt es hier keine 302-Weiterleitung auf eine Zustimmungsseite,
+  die einen Consent-Cookie erzwingt. <fetch> bleibt deshalb bewusst leer;
+  sollte NPR das künftig ändern (z. B. eine GDPR-Consent-Wall für EU-IPs),
+  ist das der erste Blick.
+
+  NPR (Bright Spot CMS) trennt Bild und Bildunterschrift in zwei Geschwister-
+  Divs (<div class="imagewrap"> für <picture>/<img>, <div class="credit-caption">
+  für den Text) statt eines gemeinsamen <figure>. Die <images>-Regel unten
+  fasst beide zu einem <figure><img><figcaption> zusammen, BEVOR der
+  Pre-Filter läuft.
+
+  Die Caption selbst enthält im Quell-HTML zusätzlich den Fotocredit
+  (<b class="credit">) und einen "hide caption"-Toggle-Button, beide
+  verschachtelt im selben <p> wie der eigentliche Bildtext. caption-xpath
+  greift deshalb gezielt nur den ersten Text-Knoten des <p> ab
+  (".../p/text()[1]"), statt des gesamten textContent() – sonst würden
+  Fotograf/Copyright-Vermerk und "hide caption" mit in die Bildunterschrift
+  hineingezogen. Dadurch erübrigt sich auch ein separates <remove> für
+  hide-caption/toggle-caption: der komplette Ursprungscontainer wird durch
+  die neue <figure> ersetzt, bevor der Pre-Filter überhaupt läuft.
+
+  Die verfügbaren Sektionen und Regeltypen sind in 000.sample.com.xml
+  dokumentiert.
+-->
+<domain name="npr.org">
+
+  <!-- ── Fetch-Header ───────────────────────────────────────────────────── -->
+  <!-- Nicht nötig, siehe Kommentar oben – NPR liefert ohne Cookies. -->
+
+  <!-- ── Pre-Filter ─────────────────────────────────────────────────────── -->
+  <pre-filter>
+
+    <!-- "Sponsor Message"-Werbeboxen innerhalb des Artikeltexts.
+         Per Substring erfasst, damit sowohl <aside class="ad-wrap backstage">
+         als auch die "standard"-Variante greifen (beide Klassen kommen laut
+         NPR.har auf npr.org vor). -->
+    <remove xpath="//aside[contains(@class,'ad-wrap')]" />
+
+  </pre-filter>
+
+  <!-- ── Bilder ────────────────────────────────────────────────────────── -->
+  <!-- Bild (imagewrap) und Bildunterschrift (credit-caption) sind auf
+       npr.org Geschwister-Elemente innerhalb eines gemeinsamen
+       "bucketwrap image …"-Wrapper-Divs, nicht in einem <figure>. -->
+  <images>
+
+    <caption
+      container-xpath="//div[contains(@class,'bucketwrap') and contains(@class,'image')]"
+      caption-xpath=".//div[@aria-label='Image caption']/p/text()[1]"
+    />
+
+  </images>
+
+  <!-- ── Post-Filter ────────────────────────────────────────────────────── -->
+  <post-filter>
+    <!-- Bislang nichts nötig: Tags, Share-Tools und Story-Footer liegen im
+         Quell-HTML außerhalb von <div id="storytext"> und landen dadurch
+         gar nicht erst im Readability-Output. -->
+  </post-filter>
+
+  <!-- ── Metadaten ──────────────────────────────────────────────────────── -->
+  <metadata>
+
+    <!-- og:title trägt bei NPR den Site-Suffix " : NPR Music" o.ä. mit –
+         der echte Artikeltitel steht sauber in der storytitle-Überschrift. -->
+    <title xpath="//div[contains(@class,'storytitle')]/h1" />
+
+    <!-- Mehrere Autoren stehen als einzelne <a rel="author">-Links im
+         Byline-Block; die Metadaten-Engine joint mehrere XPath-Treffer
+         automatisch mit ", " (siehe extractDomainMetadata()). article:author
+         fehlt auf npr.org, der og:-Fallback würde also leer bleiben. -->
+    <author xpath="//div[@id='storybyline']//a[@rel='author']" />
+
+    <!-- article:published_time fehlt auf npr.org; Datum kommt stattdessen
+         aus dem <time datetime="…"> im dateblock. -->
+    <published xpath="//div[contains(@class,'dateblock')]//time/@datetime" />
+
+    <!-- excerpt (og:description) und image (og:image) sind auf npr.org
+         zuverlässig gesetzt und sauber – keine eigene Regel nötig, der
+         automatische og:-Fallback reicht. -->
+
+  </metadata>
+
+</domain>

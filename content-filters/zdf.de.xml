@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: zdf.de
+-->
+<domain name="zdf.de">
+
+  <category>Video</category>
+
+  <pre-filter>
+    <remove xpath="//*[contains(@class,'b-navigation')]" />
+    <remove xpath="//*[contains(@class,'b-footer')]" />
+    <remove xpath="//*[contains(@class,'b-related-content')]" />
+  </pre-filter>
+
+  <post-filter />
+
+  <metadata>
+    <title     xpath="//meta[@property='og:title']/@content" />
+    <excerpt   xpath="//meta[@property='og:description']/@content" />
+    <image     xpath="//meta[@property='og:image']/@content" />
+  </metadata>
+
+</domain>

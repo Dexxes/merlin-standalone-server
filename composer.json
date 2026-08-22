@@ -1,0 +1,36 @@
+{
+    "name": "merlin/server",
+    "description": "Standalone read-it-later server for Merlin (no Nextcloud dependency)",
+    "type": "project",
+    "license": "AGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Julian von Bülow"
+        }
+    ],
+    "require": {
+        "php": "^8.4",
+        "ext-pdo": "*",
+        "ext-pdo_sqlite": "*",
+        "ext-curl": "*",
+        "ext-dom": "*",
+        "ext-mbstring": "*",
+        "fivefilters/readability.php": "^3.3",
+        "patrickschur/language-detection": "^5.3",
+        "psr/log": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Merlin\\": "src/"
+        }
+    },
+    "scripts": {
+        "lint": "find . -name \\*.php -not -path './vendor/*' -print0 | xargs -0 -n1 php -l"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "platform": {
+            "php": "8.4"
+        }
+    }
+}

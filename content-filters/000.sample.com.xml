@@ -1,0 +1,402 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: sample.com
+  Beispieldatei – zeigt alle verfügbaren Optionen und Regeltypen.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  WO LIEGEN DIESE DATEIEN?
+  ═══════════════════════════════════════════════════════════════════════════════
+  Es gibt DREI Ebenen pro Domain, die zu EINER Config zusammengeführt werden
+  (Bundle < Admin-Custom < User-Custom – jede Ebene gewinnt gegenüber der davor):
+
+    content-filters/{domain}.xml   – mit der App mitgeliefert (Bundle), diese Datei
+                                      hier ist die kommentierte Referenz aller Optionen
+    merlin_cfilter (DB, scope='admin')  – instanzweit, über Verwaltungseinstellungen →
+                                      Merlin → Content-Filter gepflegt
+    merlin_cfilter (DB, scope='user')   – privat pro Nutzer, über die persönlichen
+                                      Einstellungen → Merlin gepflegt, sichtbar nur
+                                      für den jeweiligen Nutzer
+
+  Admin- und User-Custom liegen in der Datenbank (nicht mehr im Dateisystem) und sind
+  damit automatisch Teil des normalen Nextcloud-DB-Backups.
+
+  Zusammenführung:
+    · Listen-Sektionen (pre-filter, post-filter, quotes, images) werden ergänzt;
+      Custom-Regeln laufen NACH den Regeln der jeweils darunterliegenden Ebene.
+    · <fetch><header> wird je name-Attribut ersetzt, <json> je id-Attribut.
+    · <metadata>-Felder und <category>: definiert eine Custom-Ebene ein Feld,
+      ersetzt sie die komplette Kette dieses Feldes aus den darunterliegenden Ebenen.
+    · Einzelne Regeln einer darunterliegenden Ebene lassen sich über <disable>
+      abschalten (siehe unten) – auch eine Admin-Regel aus dem User-Layer heraus.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  PIPELINE-REIHENFOLGE
+  ═══════════════════════════════════════════════════════════════════════════════
+  0. <fetch>        – HTTP-Header für den Abruf der Seite (vor allem anderen)
+  1. <pre-filter>   – Entfernt/markiert Elemente VOR dem Readability-Durchlauf
+  2. <images>       – Normalisiert Bild+Caption-Strukturen → <figure><figcaption> (vor Readability)
+  3. <quotes>       – Wandelt seitenspezifische Zitat-Strukturen um (vor Readability)
+  4. Readability    – Extrahiert den Artikel-Content
+  5. <post-filter>  – Bereinigt den Readability-Output
+  6. <metadata>     – Überschreibt extrahierte Metadaten mit eigenen XPath-Werten
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  FETCH-HEADER  (<fetch>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Zusätzliche HTTP-Header für den Abruf dieser Domain. Gedacht für Seiten, die
+  Server-Requests ohne Consent-Cookie auf eine Zustimmungsseite umleiten
+  (z. B. golem.de) oder ohne bestimmte Header kein Artikel-HTML ausliefern.
+
+    <header name="Cookie" value="consent=1; multipage=single" />
+    <header name="User-Agent" value="Mozilla/5.0 (…)" />
+
+  Regeln:
+    · Erlaubt sind nur Cookie, User-Agent, Accept-Language und Referer.
+      Andere Namen werden ignoriert und protokolliert – eine Config-Datei soll
+      den Request nicht umbiegen (Host) oder Zugangsdaten anhängen (Authorization).
+    · Gleichnamige Standard-Header werden ersetzt, nicht ergänzt.
+    · Die Header gelten nur für Requests an genau diese Domain. Bei einem
+      Redirect auf einen anderen Host werden sie NICHT mitgeschickt, sondern
+      neu anhand des dortigen Hosts bestimmt.
+    · Zeilenumbrüche in Werten werden entfernt (Header-Injection).
+
+  Keine Zugangsdaten hier ablegen: Die Datei liegt im App-Verzeichnis, gilt für
+  alle Nutzer der Instanz und landet in Git und Backups.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  BUNDLE-REGELN ABSCHALTEN  (<disable>)     — nur in custom/-Dateien sinnvoll
+  ═══════════════════════════════════════════════════════════════════════════════
+  Der Merge ist additiv: eine eigene Regel kann eine mitgelieferte ergänzen, aber
+  nicht loswerden. Genau dafür ist <disable> da – etwa wenn ein Bundle-<remove>
+  nach einem Redesign der Website zu viel entfernt.
+
+  Zwei Formen:
+
+    <disable section="pre-filter" />
+      Verwirft die KOMPLETTE Bundle-Sektion. Eigene Regeln derselben Sektion
+      gelten weiterhin – section-disable plus eigene Sektion ergibt also einen
+      vollständigen Ersatz.
+      Möglich für: fetch, pre-filter, images, quotes, post-filter, json,
+      metadata, category.
+
+    <disable>
+      <pre-filter>
+        <remove class="supplementary" />
+      </pre-filter>
+      <metadata>
+        <author />
+      </metadata>
+      <json id="ld" />
+    </disable>
+      Verwirft EINZELNE Bundle-Regeln. Die Verschachtelung in den Sektionsnamen
+      ist nötig, weil <remove> sowohl in pre-filter als auch in post-filter
+      vorkommt – ohne sie wäre nicht entscheidbar, welche Regel gemeint ist.
+      <json> steht wrapper-los direkt in <disable>, wie im Dokument selbst.
+
+  Getroffen wird per Teilmengen-Vergleich: Jedes am Disable-Eintrag angegebene
+  Attribut muss bei der Bundle-Regel identisch sein, zusätzliche Attribute der
+  Bundle-Regel stören nicht. Praktische Folge:
+    <remove class="ads" />  trifft genau diese eine Regel.
+    <author />              schaltet die Bundle-Autorenregel(n) unabhängig von
+                            ihrem XPath ab.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  NOTIZ  (<note>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Freitextfeld für Administratoren, z. B. "XPath am 12.03. nach Redesign
+  angepasst". Wird beim Abruf ignoriert und erscheint in der Verwaltungsoberfläche.
+
+  Wichtig: Speichern über die Weboberfläche schreibt die Datei neu und verliert
+  dabei alle XML-Kommentare. Notizen gehören deshalb in <note> und nicht in einen
+  Kommentarblock wie diesen.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  PRE-FILTER  (<pre-filter>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Regeln werden auf das rohe HTML angewendet, bevor Readability es verarbeitet.
+  Nützlich, um Werbung, Navigation, Paywalls etc. zu entfernen.
+
+  Regeltypen:
+    <remove id="element-id" />
+      Entfernt das Element mit exakt dieser id.
+
+    <remove class="teilstring" />
+      Entfernt alle Elemente, deren class-Attribut diesen Teilstring enthält.
+
+    <remove xpath="//div[@data-ad]" />
+      Entfernt alle Elemente, die dem XPath entsprechen.
+
+    <infobox id="element-id" />
+      Markiert das Element als Infokasten (CSS-Klasse merlin-infobox).
+      Das Element wird von Readability erhalten und im Reader besonders dargestellt.
+
+    <infobox class="teilstring" />
+      Markiert passende Elemente als Infokasten.
+
+    <infobox xpath="//aside[@class='infobox']" />
+      Markiert per XPath als Infokasten.
+
+    <saveElements xpath="//div[@data-type='box']" class="merlin-sidebar" />
+      Fügt eine beliebige CSS-Klasse per XPath hinzu (vor Readability).
+      Beide Attribute xpath und class sind Pflicht.
+      Mehrere Regeln pro Domain möglich.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  ZITATERKENNUNG  (<quotes>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Standard-<blockquote>- und <q>-Elemente werden automatisch für alle Domains
+  erkannt – kein Eintrag nötig.
+
+  Seitenspezifische Zitat-Strukturen werden hier als XPath-Regeln definiert und
+  vor Readability in semantische <blockquote class="merlin-quote">-Elemente
+  umgewandelt, damit der Reader sie korrekt darstellt.
+
+  Attribute:
+    container-xpath  – Pflicht. Wählt das Wrapper-Element aus.
+    text-xpath       – Optional. Relativer XPath für den Zitattext.
+                       Standard: container-Element selbst.
+    author-xpath     – Optional. Relativer XPath für den Autorname/Quelle.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  POST-FILTER  (<post-filter>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Gleiche Regeltypen wie <pre-filter>, aber angewendet auf den von Readability
+  extrahierten Content. Nützlich, um Reste zu entfernen, die Readability
+  fälschlicherweise als Artikel-Content eingestuft hat.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  JSON-QUELLEN  (<json>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Definiert benannte JSON-Quellen, die von Metadaten-Feldern per Pfad referenziert
+  werden können. Muss VOR <metadata> stehen.
+
+  Attribute:
+    id     – Pflicht. Beliebiger Name; wird in Metafeldern als Prefix verwendet.
+    xpath  – Pflicht. XPath, der das <script>-Element mit dem JSON-Inhalt auswählt.
+    index  – Optional (Standard: 0). Index des Elements, wenn der XPath mehrere
+             Treffer liefert (0-basiert).
+
+  Wenn kein <json>-Element definiert ist, wird automatisch das erste
+  <script type="application/ld+json"> als Quelle "default" verwendet.
+
+  Beispiele:
+    <json id="ld"   xpath="//script[@type='application/ld+json']" index="0" />
+    <json id="ld1"  xpath="//script[@type='application/ld+json']" index="1" />
+    <json id="next" xpath="//script[@id='__NEXT_DATA__']" />
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  METADATEN  (<metadata>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Regeln, die Readabilitys automatisch extrahierte Metadaten überschreiben.
+  Wird nur angewendet, wenn das jeweilige Feld einen nicht-leeren Wert liefert.
+
+  Felder:
+    <title    xpath="..." />   – Seitentitel
+    <author   xpath="..." />   – Autorenname
+    <excerpt  xpath="..." />   – Teaser / Zusammenfassung
+    <image    xpath="..." />   – Bild-URL
+    <published xpath="..." />  – Veröffentlichungsdatum (ISO 8601 oder deutsches Format)
+    <category xpath="..." />   – Feste Kategorie (alternativ als Textwert ohne xpath)
+
+  Auflösungsreihenfolge je Feld:
+    1. xpath-Attribut (falls angegeben)
+    2. json-Attribut  (falls angegeben und xpath keinen Treffer lieferte)
+    3. Automatischer og:/article:-Fallback
+
+  Mehrere Regeln je Feld sind erlaubt und bilden eine Fallback-Kette in
+  Dokumentreihenfolge – nützlich, wenn eine Seite je Artikeltyp unterschiedliche
+  Layouts ausliefert (taz.de nutzt das für zwei Autoren-Varianten):
+
+    <author xpath="//span[@class='Autor']" />
+    <author xpath="//span[contains(@class,'typo-name-detail-bold')]" />
+
+  Beim Merge gilt die Kette als Einheit: Definiert ein Custom-Filter mindestens
+  eine <author>-Regel, ersetzen SEINE Regeln die komplette Bundle-Kette für
+  author – nicht einzelne Einträge daraus.
+
+  json-Attribut-Syntax:
+    json="sourceId:$.pfad.zum.wert"   – benannte Quelle aus <json id="sourceId">
+    json="$.pfad.zum.wert"            – Quelle "default" (JSON-LD oder erster <json>)
+
+  Unterstützte JSONPath-Syntax:
+    $.key              – Top-Level-Schlüssel
+    $.key.subkey       – verschachtelter Schlüssel
+    $.array[0].key     – Array-Index + Schlüssel
+    $[0].key           – Top-Level-Array-Index
+
+  Bei Attribut-XPaths (z. B. //meta[...]/@content) wird der Attributwert zurückgegeben;
+  bei Element-XPaths der trimmed textContent.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  BILDER  (<images>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Läuft VOR Readability. Wandelt seitenspezifische Bild+Caption-Strukturen in
+  semantisches <figure><img><figcaption>-HTML um, das Readability erhält.
+  Gilt für ALLE Bilder im Artikel (inkl. Hero-Image).
+
+  Attribute:
+    container-xpath  – Pflicht. Wählt das Wrapper-Element aus, das Bild UND Caption enthält.
+    caption-xpath    – Pflicht. Relativer XPath (ausgehend vom Container) für den Caption-Text.
+
+  Mehrere Regeln pro Domain möglich.
+
+  ═══════════════════════════════════════════════════════════════════════════════
+  KATEGORIE  (<category>)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Weist allen Artikeln dieser Domain eine feste Kategorie zu, ohne XPath.
+  Wird von <metadata><category> überschrieben, falls dort ein Wert gefunden wird.
+-->
+<domain name="sample.com">
+
+  <!-- ── Notiz ──────────────────────────────────────────────────────────── -->
+  <!-- Nur in custom/-Dateien sinnvoll. Überlebt das Speichern über die
+       Weboberfläche, anders als XML-Kommentare. -->
+  <!--
+  <note>XPath für den Autor am 12.03. nach dem Redesign angepasst.</note>
+  -->
+
+  <!-- ── Bundle-Regeln abschalten ───────────────────────────────────────── -->
+  <!-- Nur in custom/-Dateien sinnvoll: hebt einzelne Regeln oder ganze
+       Sektionen des mitgelieferten Filters auf. -->
+  <!--
+  <disable section="post-filter" />
+  <disable>
+    <pre-filter>
+      <remove class="supplementary" />
+    </pre-filter>
+    <metadata>
+      <author />
+    </metadata>
+    <json id="ld" />
+  </disable>
+  -->
+
+  <!-- ── Fetch-Header ───────────────────────────────────────────────────── -->
+  <!-- Nur nötig, wenn die Seite ohne bestimmte Header kein Artikel-HTML liefert. -->
+  <!--
+  <fetch>
+    <header name="Cookie" value="consent=1" />
+  </fetch>
+  -->
+
+  <!-- ── Pre-Filter ─────────────────────────────────────────────────────── -->
+  <pre-filter>
+
+    <!-- Entfernen per ID -->
+    <remove id="cookie-banner" />
+    <remove id="paywall-overlay" />
+
+    <!-- Entfernen per CSS-Klasse (Teilstring-Match) -->
+    <remove class="ad-container" />
+    <remove class="newsletter-signup" />
+    <remove class="related-articles" />
+
+    <!-- Entfernen per XPath (volle Flexibilität) -->
+    <remove xpath="//div[@data-ad-unit]" />
+    <remove xpath="//section[contains(@class,'teaser-list')]" />
+    <remove xpath="//*[@aria-label='Werbung']" />
+
+    <!-- Infoboxen markieren (werden im Reader besonders dargestellt) -->
+    <infobox id="article-infobox" />
+    <infobox class="info-box" />
+    <infobox xpath="//aside[contains(@class,'sidebar-facts')]" />
+
+    <!-- Beliebige CSS-Klasse per XPath hinzufügen (vor Readability, Klasse bleibt erhalten) -->
+    <saveElements xpath="//aside[@data-type='related']" class="merlin-sidebar" />
+    <saveElements xpath="//div[contains(@class,'fact-box')]" class="merlin-facts" />
+
+  </pre-filter>
+
+  <!-- ── Zitate ─────────────────────────────────────────────────────────── -->
+  <quotes>
+
+    <!-- Beispiel: BEM-Komponenten-Quote (z. B. Spiegel, Zeit) -->
+    <quote
+      container-xpath="//div[contains(@class,'component-quote') and not(contains(@class,'component-quote__'))]"
+      text-xpath=".//div[contains(@class,'component-quote__quote')]"
+      author-xpath=".//div[contains(@class,'component-quote__author')]"
+    />
+
+    <!-- Beispiel: einfaches Pull-Quote ohne Autor -->
+    <quote
+      container-xpath="//div[contains(@class,'pull-quote')]"
+      text-xpath=".//p[contains(@class,'pull-quote__text')]"
+    />
+
+    <!-- Beispiel: Container ist direkt der Zitattext (kein text-xpath nötig) -->
+    <quote
+      container-xpath="//figure[contains(@class,'article-quote')]"
+      author-xpath=".//figcaption"
+    />
+
+  </quotes>
+
+  <!-- ── Bilder ────────────────────────────────────────────────────────── -->
+  <!-- Läuft VOR Readability. Jede Regel benennt einen Container (container-xpath),
+       der ein <img> und einen Caption-Text (caption-xpath, relativ zum Container)
+       enthält. Der Container wird durch <figure><img><figcaption>…</figcaption></figure>
+       ersetzt, sodass Readability Caption und Bild gemeinsam erhält. -->
+  <images>
+
+    <!-- Beispiel: Bild-Wrapper mit separatem Caption-Span -->
+    <!--
+    <caption
+      container-xpath="//div[contains(@class,'article-image')]"
+      caption-xpath=".//span[contains(@class,'image-caption')]"
+    />
+    -->
+
+    <!-- Beispiel: figure-Element mit Custom-Caption-Element statt figcaption -->
+    <!--
+    <caption
+      container-xpath="//figure[contains(@class,'c-figure')]"
+      caption-xpath=".//p[contains(@class,'c-figure__caption')]"
+    />
+    -->
+
+  </images>
+
+  <!-- ── Post-Filter ────────────────────────────────────────────────────── -->
+  <post-filter>
+
+    <!-- Entfernen per Klasse aus dem Readability-Output -->
+    <remove class="article-footer-links" />
+    <remove xpath="//p[contains(@class,'subscription-hint')]" />
+
+  </post-filter>
+
+  <!-- ── JSON-Quellen ─────────────────────────────────────────────────── -->
+  <!-- Benannte JSON-Quellen für Metadaten-Felder. Ohne diesen Block wird     -->
+  <!-- das erste <script type="application/ld+json"> als "default" verwendet. -->
+  <!--
+  <json id="ld"   xpath="//script[@type='application/ld+json']" index="0" />
+  <json id="ld1"  xpath="//script[@type='application/ld+json']" index="1" />
+  <json id="next" xpath="//script[@id='__NEXT_DATA__']" />
+  -->
+
+  <!-- ── Metadaten ──────────────────────────────────────────────────────── -->
+  <metadata>
+
+    <title    xpath="//h1[contains(@class,'article-headline')]" />
+
+    <!-- Autor: erst XPath, dann JSON-LD, dann og:-Fallback -->
+    <author   xpath="//a[@rel='author']" />
+    <!-- <author   json="$.author.name" /> -->
+    <!-- <author   json="ld:$.author[0].name" /> -->
+    <!-- <author   json="next:$.pageProps.article.author" /> -->
+
+    <excerpt  xpath="//p[contains(@class,'article-intro')]" />
+    <image    xpath="//meta[@property='og:image']/@content" />
+    <published xpath="//time[@itemprop='datePublished']/@datetime" />
+
+    <!-- Kategorie per XPath (überschreibt <category> unten) -->
+    <!-- <category xpath="//meta[@property='article:section']/@content" /> -->
+
+  </metadata>
+
+  <!-- ── Feste Kategorie ────────────────────────────────────────────────── -->
+  <!-- Weist allen Artikeln dieser Domain die Kategorie "Nachrichten" zu.   -->
+  <!-- Wird durch <metadata><category xpath="..."> überschrieben.           -->
+  <!-- <category>Nachrichten</category> -->
+
+</domain>

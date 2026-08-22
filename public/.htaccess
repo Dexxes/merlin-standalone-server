@@ -1,0 +1,11 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Nicht auf . oder .. anwenden
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Alles andere auf index.php umschreiben
+    RewriteRule ^(.*)$ index.php [L]
+</IfModule>

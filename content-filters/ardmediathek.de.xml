@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: ardmediathek.de
+-->
+<domain name="ardmediathek.de">
+
+  <category>Video</category>
+
+  <pre-filter>
+    <remove xpath="//*[contains(@class,'teaser')]" />
+    <remove xpath="//*[contains(@class,'navigation')]" />
+    <remove xpath="//*[contains(@class,'footer')]" />
+  </pre-filter>
+
+  <post-filter />
+
+  <metadata>
+    <title     xpath="//meta[@property='og:title']/@content" />
+    <excerpt   xpath="//meta[@property='og:description']/@content" />
+    <image     xpath="//meta[@property='og:image']/@content" />
+    <published xpath="//meta[@property='video:release_date']/@content" />
+  </metadata>
+
+</domain>

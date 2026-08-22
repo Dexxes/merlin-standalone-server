@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: vimeo.com
+-->
+<domain name="vimeo.com">
+  <category>Video</category>
+  <pre-filter />
+  <post-filter />
+  <metadata>
+    <title   xpath="//meta[@property='og:title']/@content" />
+    <excerpt xpath="//meta[@property='og:description']/@content" />
+    <image   xpath="//meta[@property='og:image']/@content" />
+    <author  xpath="//meta[@name='author']/@content" />
+  </metadata>
+</domain>

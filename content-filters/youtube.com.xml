@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: youtube.com
+  Kategorie: Video – wird automatisch beim Speichern gesetzt.
+-->
+<domain name="youtube.com">
+
+  <category>Video</category>
+
+  <pre-filter>
+    <!-- Kommentare, Empfehlungen und Sidebar entfernen -->
+    <remove id="comments" />
+    <remove id="related" />
+    <remove id="secondary" />
+    <remove xpath="//*[@id='masthead']" />
+  </pre-filter>
+
+  <post-filter>
+  </post-filter>
+
+  <metadata>
+    <title     xpath="//meta[@property='og:title']/@content" />
+    <excerpt   xpath="//meta[@name='description']/@content" />
+    <image     xpath="//meta[@property='og:image']/@content" />
+  </metadata>
+
+</domain>

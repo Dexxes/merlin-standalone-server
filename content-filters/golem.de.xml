@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: golem.de
+
+  Besonderheit gegenüber allen anderen Domains: Golem beantwortet Requests ohne
+  Consent-Cookie mit einem 302 auf https://www.golem.de/sonstiges/zustimmung/auswahl.html
+  – der Artikel-HTML kommt also gar nicht erst beim Extractor an. Die <fetch>-Sektion
+  schickt deshalb den Consent-Cookie mit, den ein Browser nach dem Klick auf
+  "Zustimmen" setzt. Zusätzlich sorgt golem_multipage=single dafür, dass mehrseitige
+  Artikel komplett auf einer Seite ausgeliefert werden (keine Pagination-Logik nötig).
+
+  WARTUNG: Cookie-Name und -Wert stammen von Golem und können sich ändern
+  (der Name trägt eine Jahreszahl, der Wert ein Datum). Bricht der Import wieder
+  mit einer Weiterleitung auf die Zustimmungsseite ab, ist hier der erste Blick.
+  Referenz: https://github.com/fivefilters/ftr-site-config → golem.de.txt
+
+  Die verfügbaren Sektionen und Regeltypen sind in 000.sample.com.xml dokumentiert.
+-->
+<domain name="golem.de">
+
+  <!-- ── Fetch-Header ───────────────────────────────────────────────────── -->
+  <fetch>
+    <header name="Cookie" value="golem_consent20=cmp|250101; golem_multipage=single" />
+  </fetch>
+
+  <!-- ── Pre-Filter ─────────────────────────────────────────────────────── -->
+  <pre-filter>
+
+    <!-- Werbung, Affiliate, Seminar-/Job-Boxen -->
+    <remove class="iqadtile" />
+    <remove class="gbox_affiliate" />
+    <remove class="seminars" />
+    <remove class="job-market" />
+    <remove xpath="//article[contains(@class,'go-teaser--variant-affiliate')]" />
+
+    <!-- Artikel-Teaser und Link-Listen zu anderen Beiträgen -->
+    <remove xpath="//div[contains(@class,'go-teaser-block')]" />
+    <remove xpath="//ul[contains(@class,'go-alink-list')]" />
+    <remove class="supplementary" />
+    <remove class="implied" />
+
+    <!-- Header-Beiwerk: Meta-Zeile, Button-Leiste, Serien-Label -->
+    <remove xpath="//div[contains(@class,'go-article-header__meta')]" />
+    <remove xpath="//div[contains(@class,'go-article-header__button-bar')]" />
+    <remove xpath="//div[contains(@class,'go-article-header__series')][.//a[contains(@class,'go-label')]]" />
+
+    <!-- Navigation innerhalb des Artikels: Pagination und Inhaltsverzeichnis.
+         golem_multipage=single liefert bereits alle Seiten, die Pagination ist
+         damit nur noch toter Ballast. -->
+    <remove xpath="//nav[contains(@class,'go-article__pagination')]" />
+    <remove xpath="//details[contains(@class,'go-article__index')]" />
+    <remove class="list-jtoc" />
+    <remove class="table-jtoc" />
+
+    <!-- Social-Buttons, Tags, Kommentare/Forum -->
+    <remove class="social-tools" />
+    <remove class="go-button-bar" />
+    <remove class="topictags" />
+    <remove class="comments" />
+
+    <!-- Galerie-Bedienelemente und leere Platzhalter-Bilder -->
+    <remove xpath="//div[contains(@class,'go-gallery__actions')]" />
+    <remove xpath="//img[@src='']" />
+
+    <!-- Video-Platzhalter, die ohne Javascript nur einen Hinweistext zeigen -->
+    <remove xpath="//figure[contains(@id,'gvideo')]" />
+    <remove xpath="//figure/figcaption[contains(text(),'Bitte aktivieren Sie Javascript')]" />
+
+    <!-- Link-Dekoration: Icon und Screenreader-Text bei externen Links -->
+    <remove xpath="//svg[contains(@class,'go-external-link__icon')]" />
+    <remove xpath="//span[@class='go-vh' and normalize-space(text())='(öffnet im neuen Fenster)']" />
+
+  </pre-filter>
+
+  <!-- ── Post-Filter ────────────────────────────────────────────────────── -->
+  <post-filter>
+    <!-- Hier post-Readability-Remove-Regeln eintragen -->
+  </post-filter>
+
+  <!-- ── Metadaten ──────────────────────────────────────────────────────── -->
+  <!-- Titel, Bild und Teaser kommen zuverlässig aus den og:-Tags (automatischer
+       Fallback), deshalb hier nur Autor und Datum. -->
+  <metadata>
+    <author    xpath="//span[@class='go-authors']/a" />
+    <published xpath="//time/@datetime" />
+  </metadata>
+
+</domain>

@@ -1,0 +1,693 @@
+/* Merlin – gemeinsames Stylesheet für alle Server-Templates.
+   Einziger Ladepunkt: templates/partials/header.php per <link>.
+   Seiten-spezifische Layout-Regeln (Leseliste, Reader, Content-Filter, …)
+   leben hier zusammen mit der Basis, statt verstreut in <style>-Blöcken
+   je Template – Klassen-/ID-Namen bleiben dabei exakt wie im Markup/JS.
+
+   Die Leseliste (body.library, .lib-*) folgt dem Industry-Entwurf: Barlow
+   Condensed über Barlow, Stahlblau als einziger Akzent, rechteckige
+   Hairline-Objekte mit Registermarken. Die übrigen Seiten (login, account,
+   admin, reader) behalten unverändert die Basis-Tokens oben. */
+
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;700&family=Barlow+Condensed:wght@400;600&display=swap');
+
+:root {
+    --bg: #f5f6fa;
+    --surface: #ffffff;
+    --surface-alt: #f8f9fc;
+    --border: #e4e7ee;
+    --border-strong: #d6dae4;
+    --text: #1c1e26;
+    --text-muted: #6b7280;
+    --accent: #3865f5;
+    --accent-hover: #2c52c9;
+    --accent-soft: #eaefff;
+    --success: #16a34a;
+    --success-soft: #e8f8ee;
+    --danger: #dc2626;
+    --danger-soft: #fdecec;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 18px;
+    --shadow-sm: 0 1px 2px rgba(20, 24, 40, 0.06);
+    --shadow-md: 0 8px 24px rgba(20, 24, 40, 0.08);
+    --shadow-lg: 0 16px 40px rgba(20, 24, 40, 0.14);
+
+    /* Industry-Tokens – nur von der Leseliste (body.library) benutzt. */
+    --ind-bg: #f2f2f3;
+    --ind-text: #1d1f20;
+    --ind-accent: #5980a6;
+    --ind-accent-600: #597ea3;
+    --ind-accent-700: #416180;
+    --ind-accent-100: #eef6ff;
+    --ind-accent-300: #b5d9fd;
+    --ind-neutral-100: #f5f5f8;
+    --ind-neutral-800: #424244;
+    --ind-line: rgba(29, 31, 32, 0.16);
+    --ind-line-soft: rgba(29, 31, 32, 0.08);
+    --ind-muted: rgba(29, 31, 32, 0.5);
+    --ind-body: "Barlow", system-ui, sans-serif;
+    --ind-head: "Barlow Condensed", system-ui, sans-serif;
+}
+
+* , *::before, *::after { box-sizing: border-box; }
+
+::selection { background: var(--accent); color: #fff; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 4em auto;
+    padding: 0 1.5em;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.5;
+}
+
+/* Schmale Formularseiten (Login/Konto/Admin) vs. breite Leseliste vs.
+   lesefreundliche Artikelansicht - siehe $layout-Variable je Template. */
+body.narrow {
+    max-width: 440px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 2.75em 2.5em;
+}
+body.wide { max-width: 900px; }
+body.reader { max-width: 720px; padding-bottom: 100px; }
+
+h1 { font-size: 1.5em; letter-spacing: -0.01em; margin: 0 0 0.2em; }
+h2 { font-size: 1.1em; margin-top: 2em; font-weight: 600; }
+h3 { font-size: 1em; margin-top: 1.5em; font-weight: 600; }
+
+label { display: block; margin-top: 1.1em; font-size: 0.85em; font-weight: 500; color: var(--text-muted); }
+
+input, select, textarea {
+    width: 100%;
+    padding: 0.6em 0.75em;
+    margin-top: 0.35em;
+    box-sizing: border-box;
+    font-size: 1em;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+input[type="checkbox"] { width: auto; }
+input[type="color"] { padding: 0.2em; height: 2.4em; cursor: pointer; }
+
+button {
+    margin-top: 1.5em;
+    padding: 0.6em 1.2em;
+    font-size: 0.95em;
+    font-family: inherit;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--surface-alt);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+button:hover { background: #eef0f5; border-color: var(--border-strong); }
+button:active { transform: translateY(1px); }
+
+/* Primäre Aktion pro Formular ist immer der type="submit"-Button
+   (Login, Hinzufügen, Anlegen, Speichern, …) - keine Klassenänderung nötig. */
+button[type="submit"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    box-shadow: var(--shadow-sm);
+}
+button[type="submit"]:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+/* Bekannte destruktive Aktionen - Ids/Klassen aus library.php, account.php,
+   admin_users.php, article_reader.php, admin_content_filters.php. */
+#btn-delete, #cf-delete, #share-revoke-btn, button.delete, button.revoke {
+    color: var(--danger);
+    background: var(--danger-soft);
+    border-color: transparent;
+}
+#btn-delete:hover, #cf-delete:hover, #share-revoke-btn:hover, button.delete:hover, button.revoke:hover {
+    background: #fbd8d8;
+}
+
+.error { color: var(--danger); margin-top: 1em; font-size: 0.9em; }
+.success { color: var(--success); margin-top: 1em; font-size: 0.9em; }
+.muted { color: var(--text-muted); font-size: 0.9em; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 1em; }
+th, td { text-align: left; padding: 0.6em 0.5em; border-bottom: 1px solid var(--border); font-size: 0.9em; }
+th { color: var(--text-muted); font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.03em; }
+tbody tr:hover { background: var(--surface-alt); }
+
+/* Aktions-Zellen in Tabellen (admin_users.php): Buttons nebeneinander statt
+   mit dem globalen button-Abstand (margin-top: 1.5em), der sie sonst weit
+   unter den Zeileninhalt schiebt und übereinander umbrechen lässt. */
+td.row-actions { display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center; }
+td.row-actions button { margin-top: 0; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.badge {
+    display: inline-block;
+    margin-left: 0.5em;
+    font-size: 0.72em;
+    font-weight: 600;
+    padding: 0.15em 0.5em;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+}
+
+/* ══ Leseliste (library.php) — Industry-Entwurf 1a ═══════════════════════
+   Ein durchgehender Rahmen um Nav + Inhalt, oben die Nav-Zeile, darunter
+   der horizontal scrollbare "Weiterlesen"-Streifen, darunter zweispaltig
+   Seitenleiste (Kategorien/Tags) + Liste. */
+
+body.library {
+    max-width: 1400px;
+    margin: 2.5em auto;
+    padding: 0 1.5em;
+    background: var(--ind-bg);
+    color: var(--ind-text);
+    font-family: var(--ind-body);
+    font-size: 15px;
+}
+body.library h1, body.library h2, body.library h3, body.library h4 {
+    font-family: var(--ind-head);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.12;
+}
+body.library a { color: var(--ind-accent); }
+body.library a:hover { color: var(--ind-accent-700); }
+body.library :focus-visible { outline: 2px solid var(--ind-accent); outline-offset: 2px; }
+body.library input:focus { box-shadow: none; }
+
+.lib-shell { border: 1px solid rgba(29, 31, 32, 0.10); background: var(--ind-bg); }
+
+/* — Nav — */
+.lib-nav {
+    display: flex;
+    align-items: center;
+    gap: 13.6px;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--ind-line);
+}
+.lib-brand {
+    font-family: var(--ind-head);
+    font-weight: 600;
+    font-size: 18px;
+    margin-right: auto;
+}
+.lib-brand span {
+    font-family: var(--ind-body);
+    font-weight: 400;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(29, 31, 32, 0.45);
+    margin-left: 6px;
+}
+.lib-nav > a { font-size: 14px; color: var(--ind-text); }
+.lib-nav > a:hover, .lib-nav > a[aria-current="page"] { color: var(--ind-accent); text-decoration: none; }
+
+.lib-search { position: relative; margin-right: 14px; }
+.lib-search svg { position: absolute; left: 10px; top: 11px; color: var(--ind-muted); }
+.lib-input {
+    min-height: 36px;
+    margin-top: 0;
+    padding: 6px 10px;
+    font-family: var(--ind-body);
+    font-size: 14px;
+    color: var(--ind-text);
+    caret-color: var(--ind-accent);
+    background: #e9e9ea;
+    border: 1px solid var(--ind-line);
+    border-radius: 0;
+    transition: border-color 0.15s ease;
+}
+.lib-input:hover { border-color: rgba(29, 31, 32, 0.45); }
+.lib-input:focus { border-color: var(--ind-accent); }
+#search.lib-input { width: 260px; padding-left: 32px; }
+
+.lib-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 0;
+    padding: 6.8px 12.2px;
+    font-family: var(--ind-head);
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.2;
+    color: var(--ind-text);
+    background: transparent;
+    border: 1px solid var(--ind-line);
+    border-radius: 0;
+    cursor: pointer;
+}
+.lib-btn:hover { background: rgba(29, 31, 32, 0.07); border-color: var(--ind-line); }
+.lib-btn:active { background: rgba(29, 31, 32, 0.14); transform: none; }
+.lib-btn svg { display: block; }
+.lib-btn--primary,
+button.lib-btn--primary[type="submit"] {
+    min-height: 36px;
+    background: var(--ind-accent);
+    border-color: var(--ind-accent);
+    color: var(--ind-bg);
+    box-shadow: none;
+}
+.lib-btn--primary:hover,
+button.lib-btn--primary[type="submit"]:hover { background: var(--ind-accent-600); border-color: var(--ind-accent-600); }
+.lib-btn--icon { width: 32px; height: 32px; padding: 0; }
+.lib-btn--danger { color: #b3261e; }
+.lib-btn--danger:hover { background: rgba(179, 38, 30, 0.08); }
+
+/* — Hinzufügen-Zeile (per Nav-Button aufgeklappt) — */
+.lib-addrow {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--ind-line);
+    background: var(--ind-accent-100);
+}
+.lib-addrow.is-open { display: flex; }
+.lib-addrow input { flex: 1; max-width: 560px; }
+.lib-addrow .error { margin: 0 0 0 4px; }
+
+.lib-body { padding: 26px 28px 30px; }
+
+/* — Abschnittsköpfe — */
+.lib-sechead { display: flex; align-items: baseline; gap: 14px; margin: 0 0 4px; }
+.lib-sechead h2 { margin: 0; font-size: 20px; }
+.lib-sechead .lib-kicker { flex: none; }
+.lib-sechead .lib-rule { flex: 1; height: 1px; background: var(--ind-line); }
+.lib-kicker {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ind-muted);
+}
+
+/* — "Weiterlesen": horizontal scrollbarer Streifen — */
+.lib-strip {
+    display: flex;
+    gap: 22px;
+    margin: 18px 0 0 -6px;
+    padding: 6px 6px 14px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    overscroll-behavior-x: contain;
+}
+.lib-strip-card {
+    position: relative;
+    flex: none;
+    width: 398px;
+    border: 1px solid var(--ind-line);
+    background: transparent;
+    cursor: pointer;
+}
+.lib-strip-card:hover { background: rgba(89, 128, 166, 0.06); }
+.lib-strip-card .lib-thumb { aspect-ratio: 16 / 9; height: auto; border: 0; border-bottom: 1px solid var(--ind-line); }
+.lib-strip-card .lib-strip-text { padding: 14px 15px 16px; }
+.lib-strip-card .lib-title { font-family: var(--ind-head); font-weight: 600; font-size: 19px; line-height: 1.18; letter-spacing: -0.01em; color: var(--ind-text); }
+.lib-strip-card .lib-title:hover { text-decoration: none; }
+
+.lib-source {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ind-accent);
+    margin-bottom: 6px;
+}
+.lib-progress { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.lib-progress-pct { font-family: var(--ind-head); font-weight: 600; font-size: 14px; color: var(--ind-accent-700); min-width: 34px; }
+.lib-progress-track { flex: 1; height: 4px; background: rgba(29, 31, 32, 0.12); }
+.lib-progress-fill { display: block; height: 4px; background: var(--ind-accent); }
+.lib-remaining { font-size: 11px; color: var(--ind-muted); margin-top: 6px; }
+
+/* Registermarken – die vier Ecken jedes gerahmten Objekts. */
+.lib-corner { position: absolute; width: 11px; height: 11px; color: rgba(29, 31, 32, 0.55); pointer-events: none; }
+.lib-corner::before, .lib-corner::after { content: ""; position: absolute; background: currentColor; }
+.lib-corner::before { left: 5px; top: 0; width: 1px; height: 100%; }
+.lib-corner::after { top: 5px; left: 0; width: 100%; height: 1px; }
+.lib-corner.tl { top: -6px; left: -6px; }
+.lib-corner.tr { top: -6px; right: -6px; }
+.lib-corner.bl { bottom: -6px; left: -6px; }
+.lib-corner.br { bottom: -6px; right: -6px; }
+
+/* Platzhalter für fehlende Vorschaubilder: gezeichnete Wireframe-Zelle. */
+.lib-thumb {
+    display: block;
+    flex: none;
+    width: 100%;
+    background:
+        linear-gradient(to top right, transparent calc(50% - 0.5px), var(--ind-line) 50%, transparent calc(50% + 0.5px)),
+        linear-gradient(to bottom right, transparent calc(50% - 0.5px), var(--ind-line) 50%, transparent calc(50% + 0.5px)),
+        #e4eaf0;
+    border: 1px solid var(--ind-line);
+    object-fit: cover;
+}
+img.lib-thumb { background: #e4eaf0; }
+
+/* Markenplatzhalter (Weiterlesen-Karten ohne Vorschaubild): gleiches Motiv
+   wie NoImageView.swift in der iOS-App - dort liegt das transparente
+   Logo-PNG vor der Akzentfarbe, hier per background-image nachgebildet. */
+.lib-thumb--brand {
+    background: var(--ind-accent) url('../img/no-img.png') no-repeat center;
+    background-size: 45%;
+}
+
+/* — Aktionen erscheinen erst beim Hover über der Zeile/Karte — */
+.lib-acts { display: flex; flex-direction: column; gap: 4px; opacity: 0; transition: opacity 0.12s ease; }
+.lib-strip-card:hover .lib-acts,
+.lib-row:hover .lib-acts,
+.lib-acts:focus-within { opacity: 1; }
+.lib-strip-card .lib-acts {
+    position: absolute;
+    top: 9px;
+    right: 9px;
+    gap: 5px;
+    padding: 3px;
+    background: rgba(242, 242, 243, 0.94);
+    border: 1px solid var(--ind-line);
+}
+.lib-strip-card .lib-acts .lib-btn { width: 30px; height: 30px; padding: 0; border: 0; }
+
+/* — Zweispaltig: Seitenleiste + Liste — */
+.lib-columns { display: grid; grid-template-columns: 214px 1fr; gap: 32px; margin-top: 38px; align-items: start; }
+.lib-side { padding-top: 6px; }
+.lib-side .lib-kicker { display: block; margin-bottom: 10px; }
+.lib-side .lib-kicker + .lib-kicker,
+.lib-side .lib-facets + .lib-kicker { margin-top: 26px; }
+
+.lib-facets { display: flex; flex-direction: column; gap: 1px; }
+.lib-facet {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+    color: var(--ind-text);
+    text-decoration: none;
+}
+.lib-facet:hover { background: rgba(89, 128, 166, 0.10); text-decoration: none; color: var(--ind-text); }
+.lib-facet span:last-child { opacity: 0.5; }
+.lib-facet.is-active { background: var(--ind-accent); color: var(--ind-bg); }
+.lib-facet.is-active:hover { background: var(--ind-accent-600); color: var(--ind-bg); }
+.lib-facet.is-active span:last-child { opacity: 0.85; }
+
+.lib-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.lib-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    background: var(--ind-neutral-100);
+    color: var(--ind-neutral-800);
+    border: 0;
+    text-decoration: none;
+    cursor: pointer;
+}
+.lib-tag:hover { background: var(--ind-accent-100); color: var(--ind-accent-700); text-decoration: none; }
+.lib-tag.is-active { background: var(--ind-accent); color: var(--ind-bg); }
+
+/* — Sortierung — */
+.lib-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    border-bottom: 1px solid var(--ind-line);
+}
+.lib-toolbar .lib-spacer { flex: 1; }
+
+.lib-seg { display: inline-flex; margin-bottom: 8px; border: 1px solid var(--ind-line); }
+.lib-seg label { display: inline-flex; align-items: center; margin: 0; padding: 7px 12px; font-size: 13px; font-weight: 400; color: var(--ind-text); cursor: pointer; }
+.lib-seg label + label { border-left: 1px solid var(--ind-line); }
+.lib-seg input { position: absolute; width: 0; height: 0; opacity: 0; }
+.lib-seg label:has(input:checked) { background: var(--ind-accent); color: var(--ind-bg); }
+.lib-seg label:not(:has(input:checked)):hover { background: rgba(29, 31, 32, 0.07); }
+
+/* — Listenzeilen — */
+.lib-list { list-style: none; margin: 0; padding: 0; }
+.lib-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 15px 10px;
+    border-bottom: 1px solid var(--ind-line-soft);
+    cursor: pointer;
+}
+.lib-row:hover { background: rgba(89, 128, 166, 0.06); }
+.lib-row .lib-thumb { width: 104px; height: 70px; }
+.lib-row-main { flex: 1; min-width: 0; }
+.lib-row .lib-title {
+    font-family: var(--ind-head);
+    font-weight: 600;
+    font-size: 18px;
+    line-height: 1.2;
+    color: var(--ind-text);
+    text-decoration: none;
+}
+.lib-row .lib-title:hover { text-decoration: none; }
+.lib-row-meta { font-size: 12px; color: var(--ind-muted); margin-top: 3px; }
+.lib-row-excerpt { margin: 6px 0 0; font-size: 13px; color: rgba(29, 31, 32, 0.62); line-height: 1.5; max-width: 760px; }
+.lib-row-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.lib-row .lib-acts { flex: none; align-self: center; }
+.lib-row .lib-progress { margin-top: 9px; max-width: 260px; }
+
+.lib-processing {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 9px;
+    padding: 2px 9px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: var(--ind-accent-700);
+    border: 1px solid var(--ind-accent-300);
+}
+
+.lib-empty { padding: 28px 10px; font-size: 14px; color: var(--ind-muted); }
+.lib-more { display: flex; justify-content: center; margin-top: 26px; }
+
+@media (max-width: 900px) {
+    .lib-columns { grid-template-columns: 1fr; gap: 22px; }
+    .lib-nav { flex-wrap: wrap; }
+    .lib-strip-card { width: 300px; }
+    .lib-acts { opacity: 1; }
+}
+
+/* ── Artikel-Reader (article_reader.php) ─────────────────────────────────
+   Lesefortschrittsbalken am Bildschirmrand während des Lesens, analog zu
+   ArticleReader.vues .reader-progress-bar (progressEdge/accentColor aus den
+   Nutzereinstellungen, siehe initProgressBar() in article_reader.php).
+   z-index unter dem Dock (40), damit das Dock immer obenauf bleibt. */
+.reader-progress-bar {
+    position: fixed;
+    z-index: 35;
+    transition: width 0.05s linear, height 0.05s linear;
+}
+.reader-progress-bar--left   { left: 0; top: 0; width: 4px; }
+.reader-progress-bar--right  { right: 0; top: 0; width: 4px; }
+.reader-progress-bar--top    { top: 0; left: 0; height: 4px; }
+.reader-progress-bar--bottom { bottom: 0; left: 0; height: 4px; }
+
+/* Schwebendes Dock: analog zu ArticleReader.vues .reader-dock, pillenförmig,
+   unten mittig fix, akzentfarbig. Default-Akzent hier via var(--accent); das
+   Template setzt --dock-fg/--dock-overlay* zur Laufzeit aus der
+   Nutzereinstellung accentColor um (siehe applyDockAccent() in article_reader.php). */
+.reader-dock {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    background: var(--accent);
+    border-radius: 999px;
+    padding: 6px;
+    box-shadow: var(--shadow-lg);
+    --dock-fg: #fff;
+    --dock-overlay: rgba(255, 255, 255, 0.18);
+    --dock-overlay-active: rgba(255, 255, 255, 0.28);
+}
+
+.dock-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    margin-top: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--dock-fg);
+    cursor: pointer;
+    list-style: none;
+    transition: background 0.12s ease;
+}
+.dock-btn:hover { background: var(--dock-overlay); }
+.dock-btn:active { background: var(--dock-overlay-active); }
+.dock-btn::-webkit-details-marker { display: none; }
+#btn-favorite.is-favorite svg { fill: #f59e0b; stroke: #f59e0b; }
+
+.dock-divider { width: 1px; height: 20px; background: rgba(255, 255, 255, 0.3); margin: 0 4px; flex-shrink: 0; }
+
+.dock-item { position: relative; }
+.dock-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.dock-menu {
+    position: absolute;
+    z-index: 50;
+    bottom: calc(100% + 12px);
+    right: -6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 0.6em;
+}
+#tag-popover-panel.dock-menu { min-width: 210px; }
+#share-popover-panel.dock-menu { width: 280px; }
+.dock-menu--list { min-width: 220px; padding: 6px; }
+
+.dock-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 0.55em 0.7em;
+    margin-top: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--text);
+    font-size: 0.9em;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+.dock-menu-item:hover { background: var(--surface-alt); }
+.dock-menu-item svg { color: var(--accent); flex-shrink: 0; opacity: 0.85; }
+.dock-menu-item--danger { color: var(--danger); }
+.dock-menu-item--danger svg { color: var(--danger); }
+.dock-menu-item--danger:hover { background: var(--danger-soft); }
+
+#tag-popover-panel label { display: flex; align-items: center; gap: 0.5em; font-size: 0.9em; margin: 0.4em 0; color: var(--text); }
+#tag-popover-panel .new-tag-row { display: flex; gap: 0.4em; margin-top: 0.7em; padding-top: 0.6em; border-top: 1px solid var(--border); }
+#tag-popover-panel .new-tag-row input[type="text"] { margin-top: 0; }
+#tag-popover-panel .new-tag-row input[type="color"] { margin-top: 0; width: 2.4em; padding: 0.2em; flex-shrink: 0; }
+#tag-popover-panel .new-tag-row button { margin-top: 0; padding: 0.4em 0.9em; }
+
+#share-popover-panel input, #share-popover-panel button { margin-top: 0.5em; }
+#share-popover-panel form { display: flex; gap: 0.4em; margin-top: 0.6em; }
+#share-popover-panel form input { flex: 1; margin-top: 0; }
+#share-link-row { display: flex; gap: 0.4em; }
+#share-link-row input { flex: 1; font-size: 0.85em; margin-top: 0; }
+.share-actions-row { display: flex; gap: 0.5em; margin-top: 0.7em; padding-top: 0.6em; border-top: 1px solid var(--border); }
+.share-actions-row button { margin-top: 0; }
+
+#tts-audio { display: none; width: 100%; margin-top: 0.75em; border-radius: var(--radius-sm); }
+
+/* ── public_share.php — einfache, nicht-schwebende Toolbar (nur Vorlesen,
+   keine Listen-Aktionen wie beim eingeloggten Reader oben, daher kein Dock) */
+.reader-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5em; margin-top: 0.75em; padding-bottom: 1.25em; border-bottom: 1px solid var(--border); }
+.reader-toolbar button, .reader-toolbar summary, .reader-toolbar > a {
+    margin-top: 0;
+    padding: 0.45em 0.9em;
+    font-size: 0.88em;
+    cursor: pointer;
+}
+.reader-toolbar > a { color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.reader-toolbar > a:hover { background: var(--surface-alt); text-decoration: none; }
+.reader-toolbar summary { list-style: none; display: inline-block; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-alt); font-weight: 500; }
+.reader-toolbar summary:hover { background: #eef0f5; }
+.reader-toolbar summary::-webkit-details-marker { display: none; }
+.reader-toolbar .spacer { flex: 1; }
+
+article { margin-top: 1.75em; line-height: 1.7; font-size: 1.05em; }
+article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
+.article-excerpt { font-style: italic; color: var(--text-muted); font-size: 1.05em; }
+.article-meta { display: flex; flex-wrap: wrap; gap: 0.9em; font-size: 0.85em; color: var(--text-muted); margin: 0.9em 0 1.1em; }
+.article-tags { display: flex; flex-wrap: wrap; gap: 0.4em; margin-bottom: 1.3em; }
+.article-tags .tag-chip { padding: 0.15em 0.65em; border-radius: 999px; font-size: 0.75em; font-weight: 600; }
+.tag-chip { padding: 0.15em 0.65em; border-radius: 999px; font-size: 0.75em; font-weight: 600; }
+
+#article-body img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
+#article-body blockquote { border-left: 3px solid var(--accent); padding-left: 1.1em; color: var(--text-muted); margin: 1.3em 0; }
+#article-body figcaption { font-size: 0.85em; color: var(--text-muted); font-style: italic; }
+#reader-status { color: var(--text-muted); }
+
+#password-gate form { margin-top: 1em; }
+
+/* admin_users.php nutzt body.wide für die Nutzertabelle (Spalten + zwei
+   Aktions-Buttons passen nicht in die schmale Formularbreite), das
+   "Neuen Benutzer anlegen"-Formular bleibt trotzdem in Formularbreite. */
+#create-user { max-width: 420px; }
+
+/* ── Admin & persönliche Content-Filter ─────────────────────────────────── */
+#cf-layout { display: flex; gap: 2em; margin-top: 1.75em; align-items: flex-start; }
+#cf-list { flex: 0 0 260px; }
+#cf-list table { margin-top: 0.5em; }
+#cf-list tr { cursor: pointer; }
+#cf-list tr:hover { background: var(--surface-alt); }
+#cf-list tr.active { background: var(--accent-soft); }
+#cf-list tr.active td { color: var(--accent-hover); font-weight: 600; }
+#cf-new { display: flex; gap: 0.4em; margin-top: 1em; }
+#cf-new input { flex: 1; margin-top: 0; }
+#cf-new button { margin-top: 0; }
+
+#cf-detail {
+    flex: 1;
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    padding: 1.5em;
+}
+#cf-detail textarea, #cf-detail pre {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.85em;
+    border-radius: var(--radius-sm);
+}
+#cf-detail textarea { height: 260px; }
+#cf-detail pre {
+    max-height: 260px;
+    overflow: auto;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    padding: 0.75em;
+    white-space: pre-wrap;
+    margin-top: 0.35em;
+}
+#cf-actions { display: flex; gap: 0.6em; margin-top: 1em; flex-wrap: wrap; align-items: center; }
+#cf-actions button, #cf-actions a { margin-top: 0; }
+#cf-trace table { font-size: 0.85em; }

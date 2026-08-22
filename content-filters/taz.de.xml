@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: taz.de
+
+  Verfügbare Sektionen:
+    <pre-filter>   – Regeln, die auf das rohe HTML VOR dem Readability-Durchlauf angewendet werden
+    <post-filter>  – Regeln, die auf den von Readability extrahierten HTML-Content angewendet werden
+    <metadata>     – XPath-Regeln zur domain-spezifischen Metadaten-Extraktion (überschreibt Readability)
+
+  Regeltypen (in pre-filter und post-filter):
+    <remove id="element-id" />           – Entfernt Elemente mit genau dieser id
+    <remove class="teilstring" />        – Entfernt Elemente, deren class diesen Teilstring enthält
+    <remove xpath="//div[@data-ad]" />   – Entfernt alle Elemente, die dem XPath entsprechen
+
+  Metadaten-Felder (in <metadata>):
+    <title    xpath="..." />   – Seitentitel
+    <author   xpath="..." />   – Autorenname
+    <excerpt  xpath="..." />   – Teaser / Zusammenfassung
+    <image    xpath="..." />   – Bild-URL (bei @content-Attributen: xpath="//meta[...]/@content")
+    <published xpath="..." />  – Veröffentlichungsdatum (ISO 8601 oder deutsches Format)
+-->
+<domain name="taz.de">
+
+  <pre-filter>
+    <remove xpath="//div[contains(@class, 'tzi-bottom-container')]" />
+    <remove id="articleTeaser" />
+    <remove xpath="//section[contains(@class,'article-produktteaser-container')]" />
+    <remove xpath="//img[contains(@class,'author-profile')]" />
+    <remove xpath="//*[contains(@class,'author-container')]" />
+    <remove xpath="//div[contains(@class,'force-full-dotted')]" />
+    <remove xpath="//p[contains(@class,'typo-r-subline-detail')]" />
+    <remove xpath="//span[contains(@class,'citation_report_redhov')]" />
+    <remove xpath="//p[contains(@class,'Korrespondent')]" />
+    <remove xpath="//h2[contains(@class,'seiteneinstieg-longread')]" />
+    <remove xpath="//p[contains(@class,'typo-r-subline-longread-b')]" />
+  </pre-filter>
+
+<!-- ── Zitate ─────────────────────────────────────────────────────────── -->
+  <quotes>
+
+    <!-- Beispiel: BEM-Komponenten-Quote (z. B. Spiegel, Zeit) -->
+    <quote container-xpath="//div[contains(@class,'typo-r-quote')]" />
+
+  </quotes>
+
+  <post-filter>
+    <!-- Hier post-Readability-Remove-Regeln eintragen -->
+  </post-filter>
+
+  <metadata>
+    <author   xpath="//span[@class='Autor']" />
+    <author   xpath="//span[contains(@class, 'typo-name-detail-bold')]" />
+    <!-- Beispiele:
+    <author   xpath="//span[@class='typo-name-detail-bold link ']" />
+    <title    xpath="//h1[@class='article-title']" />
+    <excerpt  xpath="//p[@class='article-intro']" />
+    <image    xpath="//meta[@property='og:image']/@content" />
+    <published xpath="//time[@itemprop='datePublished']/@datetime" />
+    -->
+  </metadata>
+
+</domain>

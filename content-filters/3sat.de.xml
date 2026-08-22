@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: 3sat.de
+-->
+<domain name="3sat.de">
+  <category>Video</category>
+  <pre-filter />
+  <post-filter />
+  <metadata>
+    <title   xpath="//meta[@property='og:title']/@content" />
+    <excerpt xpath="//meta[@property='og:description']/@content" />
+    <image   xpath="//meta[@property='og:image']/@content" />
+  </metadata>
+</domain>
