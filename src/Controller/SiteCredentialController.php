@@ -24,8 +24,16 @@ final class SiteCredentialController {
     ) {
     }
 
+    /**
+     * Eigene Paywall-Zugangsdaten (Domain + Status, kein Passwort) plus alle
+     * Domains, die überhaupt Paywall-Login unterstützen (für die
+     * "Verbinden"-Auswahl auf der Konto-Seite).
+     */
     public function index(Request $request): Response {
-        return Response::json($this->service->listForUser($request->authUserId()));
+        return Response::json([
+            'credentials' => $this->service->listForUser($request->authUserId()),
+            'availableDomains' => $this->service->listLoginCapableDomains(),
+        ]);
     }
 
     /**

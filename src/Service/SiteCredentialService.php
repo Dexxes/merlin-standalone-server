@@ -195,6 +195,29 @@ final class SiteCredentialService {
     }
 
     /**
+     * Alle Domains, die eine gültige <login>-Sektion im Bundle haben (aktuell
+     * nur tagesspiegel.de) - Grundlage für die "Abo hinzufügen"-Auswahl auf
+     * der Konto-Seite. Iteriert alle Bundle-Domains einmalig; bei der
+     * aktuellen Größenordnung (~55 Domains) unproblematisch, da nur beim
+     * Laden der Kontoseite aufgerufen, nicht pro Artikel-Fetch. Port von
+     * merlin-nextclouds gleichnamiger Methode.
+     *
+     * @return list<string>
+     */
+    public function listLoginCapableDomains(): array {
+        $domains = [];
+        foreach ($this->filterRepository->listFilters() as $entry) {
+            if (!$entry['hasBundle']) {
+                continue;
+            }
+            if ($this->loadLoginConfig($entry['domain']) !== null) {
+                $domains[] = $entry['domain'];
+            }
+        }
+        return $domains;
+    }
+
+    /**
      * @return list<array{domain:string,status:string,lastLoginAt:?string}>
      */
     public function listForUser(int $userId): array {
