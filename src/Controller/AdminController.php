@@ -7,6 +7,7 @@ namespace Merlin\Controller;
 use Merlin\Auth\PasswordHasher;
 use Merlin\Db\ContentFilterRepository;
 use Merlin\Db\SettingsRepository;
+use Merlin\Db\SiteCredentialRepository;
 use Merlin\Db\UserRepository;
 use Merlin\Http\Request;
 use Merlin\Http\Response;
@@ -17,6 +18,7 @@ final class AdminController {
         private readonly SettingsRepository $settings,
         private readonly PasswordHasher $hasher,
         private readonly ContentFilterRepository $contentFilters,
+        private readonly SiteCredentialRepository $siteCredentials,
     ) {
     }
 
@@ -89,6 +91,9 @@ final class AdminController {
         // müssen daher hier explizit mitgelöscht werden, statt automatisch mit
         // dem Nutzer zu verschwinden.
         $this->contentFilters->deleteAllUserCustom($id);
+        // site_credentials hat ebenfalls keinen FK-Cascade (verschlüsselte
+        // Paywall-Zugangsdaten, gleiches Prinzip wie oben) - explizit mitlöschen.
+        $this->siteCredentials->deleteAllForUser($id);
         $this->users->delete($id);
         return Response::noContent();
     }

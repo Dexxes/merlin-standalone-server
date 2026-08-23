@@ -12,6 +12,7 @@ use Merlin\Controller\LoginFlowController;
 use Merlin\Controller\PageController;
 use Merlin\Controller\PublicShareController;
 use Merlin\Controller\ShareController;
+use Merlin\Controller\SiteCredentialController;
 use Merlin\Controller\TagController;
 use Merlin\Controller\TtsController;
 use Merlin\Controller\UserContentFilterController;
@@ -42,7 +43,7 @@ $pages = new PageController(
     $app->apiTokenService(),
 );
 $account = new AccountController($app->apiTokenRepository(), $app->apiTokenService());
-$admin = new AdminController($app->users(), $app->settings(), $app->passwordHasher(), $app->contentFilterRepository());
+$admin = new AdminController($app->users(), $app->settings(), $app->passwordHasher(), $app->contentFilterRepository(), $app->siteCredentialRepository());
 $articles = new ArticleController($app->articles(), $app->tags(), $app->contentExtractor(), $app->exportService(), $app->logger());
 $contentFilters = new ContentFilterController(
     $app->contentFilterRepository(),
@@ -58,6 +59,7 @@ $userContentFilters = new UserContentFilterController(
     $app->contentExtractor(),
     $app->logger(),
 );
+$siteCredentials = new SiteCredentialController($app->siteCredentialService());
 $tags = new TagController($app->tags(), $app->articles());
 $highlights = new HighlightController($app->highlights(), $app->articles());
 $loginFlow = new LoginFlowController($app->loginFlows(), $app->users());
@@ -127,6 +129,11 @@ $router->add('GET', '/api/user/content-filters/{domain}', $userContentFilters->s
 $router->add('PUT', '/api/user/content-filters/{domain}', $userContentFilters->update(...), [$auth->handle(...)]);
 $router->add('DELETE', '/api/user/content-filters/{domain}', $userContentFilters->destroy(...), [$auth->handle(...)]);
 $router->add('POST', '/api/user/content-filters/{domain}/test', $userContentFilters->test(...), [$auth->handle(...)]);
+
+// Paywall-Abo-Zugangsdaten (jeder eingeloggte Nutzer, eigene private Ebene)
+$router->add('GET', '/api/user/site-credentials', $siteCredentials->index(...), [$auth->handle(...)]);
+$router->add('PUT', '/api/user/site-credentials/{domain}', $siteCredentials->update(...), [$auth->handle(...)]);
+$router->add('DELETE', '/api/user/site-credentials/{domain}', $siteCredentials->destroy(...), [$auth->handle(...)]);
 
 // Artikel-API
 $router->add('GET', '/api/articles/counts', $articles->counts(...), [$auth->handle(...)]);

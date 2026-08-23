@@ -26,6 +26,15 @@ return [
     // TTL für Passwort-Reset-Tokens in Sekunden.
     'password_reset_ttl' => 3600,
 
+    // Schlüssel für Auth\CredentialCipher (Paywall-Abo-Zugangsdaten, z. B.
+    // Tagesspiegel Plus): 32 Byte, base64-kodiert. Erzeugen z. B. per
+    // `php -r "echo base64_encode(sodium_crypto_secretbox_keygen()), PHP_EOL;"`.
+    // Ohne gesetzten Schlüssel funktioniert der Rest von Merlin unverändert -
+    // nur das Speichern/Nutzen von Paywall-Zugangsdaten schlägt dann fehl.
+    // WICHTIG: nach dem ersten Einsatz nicht mehr ändern, sonst werden
+    // bereits gespeicherte Zugangsdaten unlesbar (Nutzer müsste sie neu eingeben).
+    'credential_cipher_key' => '',
+
     // Piper-TTS-Daemon (Vorlesefunktion) - lokal per Standard, aber
     // konfigurierbar, falls merlin-server nicht auf derselben Maschine läuft
     // wie der Daemon (z.B. Container-Setup). Ohne erreichbaren Daemon liefert

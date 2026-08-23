@@ -10,6 +10,7 @@ use Merlin\Http\Request;
 use Merlin\Http\Response;
 use Merlin\Service\ContentExtractorService;
 use Merlin\Service\ExportService;
+use Merlin\Service\Login\PaywallLoginRequiredException;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -150,6 +151,13 @@ final class ArticleController {
                     'publishedAt' => $extracted['publishedAt'] ? $extracted['publishedAt']->format('c') : null,
                     'category' => $extracted['category'] ?? null,
                 ]);
+            } catch (PaywallLoginRequiredException $e) {
+                // Erstes Speichern eines Paywall-Artikels ohne (gültige)
+                // Zugangsdaten: kein genereller Fehlschlag, sondern ein
+                // Zustand, auf den der Client mit einem Login-Dialog
+                // reagieren soll (Polling auf requiresLoginDomain, siehe
+                // ArticleRepository::toPublicArray() und PLATFORMS.md).
+                $articles->markRequiresLogin($articleId, $e->domain, $e->loginPage);
             } catch (\Throwable $e) {
                 $logger->error('article extraction failed', ['articleId' => $articleId, 'exception' => $e]);
                 $articles->clearProcessing($articleId);

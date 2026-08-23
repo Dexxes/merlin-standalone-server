@@ -3,6 +3,7 @@
   Merlin Content-Filter: tagesspiegel.de
 
   Verfügbare Sektionen:
+    <login>        – Paywall-Login-Ablauf für Tagesspiegel Plus (siehe unten)
     <pre-filter>   – Regeln, die auf das rohe HTML VOR dem Readability-Durchlauf angewendet werden
     <post-filter>  – Regeln, die auf den von Readability extrahierten HTML-Content angewendet werden
     <metadata>     – XPath-Regeln zur domain-spezifischen Metadaten-Extraktion (überschreibt Readability)
@@ -23,8 +24,47 @@
     <infobox class="teilstring" />       – Markiert passende Elemente als Infokasten
     <infobox xpath="//div[@class='...']"/> – Markiert per XPath als Infokasten
     <infobox xpath="//article[contains(@class,'infobox')]" />
+
+  ── Paywall-Login (Tagesspiegel Plus) ──────────────────────────────────────
+  Tagesspiegel Plus ist eine serverseitig durchgesetzte Paywall: unangemeldet
+  fehlt der Artikeltext komplett im HTML (kein verstecktes div, kein
+  JSON-LD mit Volltext) – Login-Cookie ist also zwingend, nicht optional wie
+  bei golem.de. Die login-Sektion beschreibt den Login-Ablauf, damit
+  SiteCredentialService automatisch einloggen kann, wenn ein Nutzer eigene
+  Zugangsdaten hinterlegt hat (Personal Settings). Details und HAR-Analyse
+  siehe die Konversation, die dieses Feature angelegt hat.
+
+  Ablauf (Service\Login\PianoJsonFormLoginProvider):
+    1. GET  page           => XSRF-TOKEN + aboportal_session (CSRF-Priming)
+    2. POST ajax-endpoint  => JSON-Formular-Login, liefert per Set-Cookie
+                               sso_token/sso_user_data/authId/__utp
+                               (Max-Age ~365 Tage, domain=tagesspiegel.de,
+                               gilt auch für www.tagesspiegel.de-Artikel)
+
+  WARTUNG: Ändert Tagesspiegel sein Login-Formular oder die Paywall-Erkennung
+  im HTML, bricht der automatische Login mit STATUS_LOGIN_FLOW_BROKEN ab bzw.
+  greift der paywall-marker nicht mehr. Erster Blick dann: frische
+  HAR-Aufzeichnung eines echten Logins im Browser, Diff gegen
+  PianoJsonFormLoginProvider::buildLoginBody() bzw. gegen den unten stehenden
+  regex.
+
+  login ist bewusst NICHT Teil von ContentFilterSchema::SECTIONS und läuft nie
+  durch ContentFilterMerger/-Validator – nur diese Bundle-Datei darf einen
+  Login-Endpoint definieren, Admin- und User-Custom-Filter nicht (siehe
+  Service\Login\LoginConfig-Docblock).
 -->
 <domain name="tagesspiegel.de">
+
+  <login type="piano-json-form" page="https://mein.tagesspiegel.de/customer/login" service="tsp">
+    <ajax-endpoint url="https://mein.tagesspiegel.de/ajax/login" />
+    <persist-cookie name="sso_token" />
+    <persist-cookie name="sso_user_data" />
+    <persist-cookie name="authId" />
+    <persist-cookie name="__utp" />
+    <!-- Tagesspiegel-Frontend setzt dieses Flag inline im Seiten-JS, sowohl
+         bei fehlendem als auch bei abgelaufenem Zugriff. -->
+    <paywall-marker regex="/&quot;showPaywall&quot;\s*:\s*true/" />
+  </login>
 
   <pre-filter>
     <remove class="tspACfv" />

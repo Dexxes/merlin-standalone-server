@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Merlin;
 
 use Merlin\Auth\ApiTokenService;
+use Merlin\Auth\CredentialCipher;
 use Merlin\Auth\PasswordHasher;
 use Merlin\Auth\PasswordResetService;
 use Merlin\Auth\SessionService;
@@ -17,6 +18,7 @@ use Merlin\Db\HighlightRepository;
 use Merlin\Db\LoginFlowRepository;
 use Merlin\Db\PasswordResetRepository;
 use Merlin\Db\SettingsRepository;
+use Merlin\Db\SiteCredentialRepository;
 use Merlin\Db\TagRepository;
 use Merlin\Db\UserRepository;
 use Merlin\Db\UserSettingsRepository;
@@ -27,6 +29,7 @@ use Merlin\Service\ContentExtractorService;
 use Merlin\Service\ContentFilterMerger;
 use Merlin\Service\ContentFilterValidator;
 use Merlin\Service\ExportService;
+use Merlin\Service\SiteCredentialService;
 use Merlin\Service\TtsStreamService;
 use PDO;
 use Psr\Log\LoggerInterface;
@@ -61,6 +64,9 @@ final class App {
     private ?ContentFilterMerger $contentFilterMerger = null;
     private ?ContentFilterRepository $contentFilterRepository = null;
     private ?ContentFilterValidator $contentFilterValidator = null;
+    private ?CredentialCipher $credentialCipher = null;
+    private ?SiteCredentialRepository $siteCredentialRepository = null;
+    private ?SiteCredentialService $siteCredentialService = null;
 
     public function __construct() {
         $configFile = __DIR__ . '/../config/config.php';
@@ -185,6 +191,24 @@ final class App {
         return $this->contentExtractor ??= new ContentExtractorService(
             $this->logger(),
             $this->contentFilterRepository(),
+            $this->siteCredentialService(),
+        );
+    }
+
+    public function credentialCipher(): CredentialCipher {
+        return $this->credentialCipher ??= new CredentialCipher((string) $this->config('credential_cipher_key', ''));
+    }
+
+    public function siteCredentialRepository(): SiteCredentialRepository {
+        return $this->siteCredentialRepository ??= new SiteCredentialRepository($this->db());
+    }
+
+    public function siteCredentialService(): SiteCredentialService {
+        return $this->siteCredentialService ??= new SiteCredentialService(
+            $this->siteCredentialRepository(),
+            $this->contentFilterRepository(),
+            $this->credentialCipher(),
+            $this->logger(),
         );
     }
 }
