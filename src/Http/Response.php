@@ -27,8 +27,8 @@ final class Response {
         return new self($status, 'application/json', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}');
     }
 
-    public static function html(string $html, int $status = 200): self {
-        return new self($status, 'text/html; charset=UTF-8', $html);
+    public static function html(string $html, int $status = 200, array $extraHeaders = []): self {
+        return new self($status, 'text/html; charset=UTF-8', $html, $extraHeaders);
     }
 
     public static function redirect(string $location, int $status = 303): self {

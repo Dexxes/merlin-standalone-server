@@ -645,6 +645,17 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
 #article-body img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
 #article-body blockquote { border-left: 3px solid var(--accent); padding-left: 1.1em; color: var(--text-muted); margin: 1.3em 0; }
 #article-body figcaption { font-size: 0.85em; color: var(--text-muted); font-style: italic; }
+
+/* Video-Embeds (YouTube/Vimeo/Twitch/TikTok/Facebook/Arte), siehe
+   ContentExtractorService::isAllowedVideoEmbedSrc(). */
+#article-body iframe { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border: 0; margin: 1.3em 0; }
+
+/* Instagram-/X-Embeds (siehe isAllowedWidgetScriptSrc()) rendern sich nach dem
+   Laden ihres Widget-Skripts selbst neu und bringen ihr eigenes Kartendesign
+   mit - die generische Zitat-Optik oben würde nur bis zum Laden sichtbar sein
+   und dann falsch wirken, deshalb hier zurückgesetzt. */
+#article-body blockquote.instagram-media,
+#article-body blockquote.twitter-tweet { border-left: none; padding-left: 0; color: inherit; max-width: 100%; overflow: hidden; margin: 1.3em 0; }
 #reader-status { color: var(--text-muted); }
 
 #password-gate form { margin-top: 1em; }

@@ -11,6 +11,7 @@ use Merlin\Db\HighlightRepository;
 use Merlin\Http\Request;
 use Merlin\Http\Response;
 use Merlin\I18n\Translator;
+use Merlin\Service\ContentExtractorService;
 use Merlin\Service\TtsStreamService;
 
 /**
@@ -36,7 +37,11 @@ final class PublicShareController {
 
     /** HTML-Shell für die öffentliche Ansicht (Zustandslogik läuft komplett im Browser-JS). */
     public function show(Request $request): Response {
-        return Response::html($this->render('public_share', $request, ['token' => (string) $request->routeParam('token')]));
+        return Response::html(
+            $this->render('public_share', $request, ['token' => (string) $request->routeParam('token')]),
+            200,
+            ['Content-Security-Policy' => ContentExtractorService::videoEmbedFrameSrcHeader()],
+        );
     }
 
     public function unlock(Request $request): Response {

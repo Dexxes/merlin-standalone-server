@@ -47,6 +47,25 @@ function sanitizeHref(url) {
     return url;
 }
 
+// Über innerHTML eingefügte <script>-Tags werden vom Browser NIE ausgeführt
+// (Standardverhalten, unabhängig vom Framework - dasselbe gilt für v-html in
+// merlin-nextclouds ArticleReader.vue). Der Sanitizer lässt aber genau zwei
+// <script>-Tags durch (isAllowedWidgetScriptSrc() im Backend: Instagrams
+// embed.js, X' widgets.js), die das zugehörige <blockquote> erst zum
+// Post/Reel rendern - ohne diesen Schritt bliebe für immer nur der
+// Zitat-Fallback stehen. Jedes gefundene <script> wird deshalb durch eine
+// neu erzeugte Kopie ersetzt; nur DAS bringt den Browser dazu, es
+// auszuführen.
+function executeEmbedScripts() {
+    document.getElementById('article-body').querySelectorAll('script').forEach(oldScript => {
+        const newScript = document.createElement('script');
+        for (const attr of oldScript.attributes) {
+            newScript.setAttribute(attr.name, attr.value);
+        }
+        oldScript.replaceWith(newScript);
+    });
+}
+
 function formatDate(dateString) {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -223,8 +242,10 @@ function renderArticle(article) {
 
     // Bewusst der einzige innerHTML-Einsatz mit ungeschütztem HTML: der Inhalt
     // wurde bereits serverseitig durch ContentExtractorService::sanitizeHtml()
-    // bereinigt.
+    // bereinigt (allowlist-basiert, nur bestimmte iframe-Hosts und exakt zwei
+    // <script>-Quellen bleiben erhalten).
     document.getElementById('article-body').innerHTML = article.content || '';
+    executeEmbedScripts();
 
     if (article.highlights && article.highlights.length) {
         renderHighlightsReadOnly(document.getElementById('article-body'), article.highlights);

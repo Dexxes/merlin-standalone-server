@@ -550,6 +550,25 @@ function applyFontSize() {
     document.getElementById('article-body').style.fontSize = size + 'px';
 }
 
+// Über innerHTML eingefügte <script>-Tags werden vom Browser NIE ausgeführt
+// (Standardverhalten, unabhängig vom Framework - dasselbe gilt für v-html in
+// merlin-nextclouds ArticleReader.vue). Der Sanitizer lässt aber genau zwei
+// <script>-Tags durch (isAllowedWidgetScriptSrc() im Backend: Instagrams
+// embed.js, X' widgets.js), die das zugehörige <blockquote> erst zum
+// Post/Reel rendern - ohne diesen Schritt bliebe für immer nur der
+// Zitat-Fallback stehen. Jedes gefundene <script> wird deshalb durch eine
+// neu erzeugte Kopie ersetzt; nur DAS bringt den Browser dazu, es
+// auszuführen.
+function executeEmbedScripts() {
+    document.getElementById('article-body').querySelectorAll('script').forEach(oldScript => {
+        const newScript = document.createElement('script');
+        for (const attr of oldScript.attributes) {
+            newScript.setAttribute(attr.name, attr.value);
+        }
+        oldScript.replaceWith(newScript);
+    });
+}
+
 document.getElementById('btn-font').addEventListener('click', () => {
     const current = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10) || FONT_SIZE_STEPS[1];
     const idx = FONT_SIZE_STEPS.indexOf(current);
@@ -609,9 +628,11 @@ function renderArticle() {
 
     // Bewusst der einzige innerHTML-Einsatz mit ungeschütztem HTML: der Inhalt
     // wurde bereits serverseitig durch ContentExtractorService::sanitizeHtml()
-    // bereinigt (allowlist-basiert, iframe/script/… entfernt) - dieselbe
-    // Vertrauensgrenze wie v-html in merlin-nextclouds ArticleReader.vue.
+    // bereinigt (allowlist-basiert, nur bestimmte iframe-Hosts und exakt zwei
+    // <script>-Quellen bleiben erhalten) - dieselbe Vertrauensgrenze wie
+    // v-html in merlin-nextclouds ArticleReader.vue.
     document.getElementById('article-body').innerHTML = article.content || '';
+    executeEmbedScripts();
     applyFontSize();
 
     document.getElementById('reader-status').style.display = 'none';
