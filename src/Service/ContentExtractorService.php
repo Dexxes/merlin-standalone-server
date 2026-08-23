@@ -10,9 +10,13 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 use fivefilters\Readability\Configuration;
 use fivefilters\Readability\ParseException;
 use fivefilters\Readability\Readability;
+use Merlin\Service\Http\SsrfSafeResolver;
+use Merlin\Service\Login\PaywallLoginRequiredException;
 use Psr\Log\LoggerInterface;
 
 class ContentExtractorService {
+	use SsrfSafeResolver;
+
 	private LoggerInterface $logger;
 
 	/** @var list<string>|null Gecachte Regex-Patterns aus url-shorteners.json */
@@ -84,7 +88,11 @@ class ContentExtractorService {
 	 */
 	private ?string $currentUserId = null;
 
-	public function __construct(LoggerInterface $logger, DomainConfigProvider $domainConfig) {
+	public function __construct(
+		LoggerInterface $logger,
+		DomainConfigProvider $domainConfig,
+		private SiteCredentialService $siteCredentials,
+	) {
 		$this->logger       = $logger;
 		$this->domainConfig = $domainConfig;
 	}
@@ -138,9 +146,19 @@ class ContentExtractorService {
 			['body' => $rawHtml, 'httpCharset' => $httpCharset, 'finalUrl' => $finalUrl] = $this->fetchUrl($url);
 			$url = $finalUrl;
 
+			$this->assertNotPaywalled($url, $rawHtml);
+
 			return $this->processHtml($url, $rawHtml, $httpCharset, $trace);
 		}
-		catch (ParseException $e) 
+		catch (PaywallLoginRequiredException $e)
+		{
+			// Absichtlich VOR dem generischen \Exception-Catch unten: die
+			// Exception muss unverändert bei ArticleController ankommen, das
+			// daraus eine eindeutige "Login erforderlich"-API-Antwort baut
+			// (siehe PLATFORMS.md) statt eines generischen Fehlschlags.
+			throw $e;
+		}
+		catch (ParseException $e)
 		{
 			$this->logger->error('Failed to parse article: ' . $e->getMessage(), ['url' => $url]);
 			throw new \Exception('Failed to extract article content: ' . $e->getMessage());
@@ -781,144 +799,106 @@ class ContentExtractorService {
 	 */
 	private function loadFetchOverrides(string $url): array
 	{
-		$config = $this->loadDomainConfig($this->normalizeDomain($url));
-		if ($config === null || !isset($config->fetch)) {
-			return [];
-		}
+		$domain = $this->normalizeDomain($url);
+		$config = $this->loadDomainConfig($domain);
 
 		$headers = [];
 
-		foreach ($config->fetch->header as $header) {
-			$name  = trim((string) ($header['name'] ?? ''));
-			$value = trim((string) ($header['value'] ?? ''));
+		if ($config !== null && isset($config->fetch)) {
+			foreach ($config->fetch->header as $header) {
+				$name  = trim((string) ($header['name'] ?? ''));
+				$value = trim((string) ($header['value'] ?? ''));
 
-			if ($name === '' || $value === '') {
-				continue;
+				if ($name === '' || $value === '') {
+					continue;
+				}
+
+				if (!in_array(strtolower($name), self::FETCH_HEADER_WHITELIST, true)) {
+					$this->logger->warning(
+						'Merlin: <fetch>-Header nicht erlaubt und ignoriert: ' . $name,
+						['url' => $url]
+					);
+					continue;
+				}
+
+				// CR/LF entfernen: Ein Wert mit Zeilenumbruch würde sonst weitere
+				// Header-Zeilen in den Request schmuggeln (Header-Injection).
+				$headers[$name] = str_replace(["\r", "\n"], '', $value);
 			}
-
-			if (!in_array(strtolower($name), self::FETCH_HEADER_WHITELIST, true)) {
-				$this->logger->warning(
-					'Merlin: <fetch>-Header nicht erlaubt und ignoriert: ' . $name,
-					['url' => $url]
-				);
-				continue;
-			}
-
-			// CR/LF entfernen: Ein Wert mit Zeilenumbruch würde sonst weitere
-			// Header-Zeilen in den Request schmuggeln (Header-Injection).
-			$headers[$name] = str_replace(["\r", "\n"], '', $value);
 		}
+
+		$this->appendSiteCredentialCookies($domain, $headers);
 
 		return $headers;
 	}
 
 	/**
-	 * Prüft Schema und aufgelöste IP-Adresse(n) eines Hosts gegen SSRF, BEVOR eine
-	 * Verbindung aufgebaut wird. Nur http/https sind erlaubt; die aufgelöste(n)
-	 * IP(s) dürfen nicht in einem privaten oder reservierten Range liegen (RFC1918,
-	 * Loopback, Link-Local inkl. Cloud-Metadata 169.254.169.254, Multicast, …).
+	 * Hängt den per Paywall-Login gewonnenen Session-Cookie-Satz des
+	 * AUFRUFENDEN Nutzers ($currentUserId) an den Cookie-Header an, sofern die
+	 * Domain eine <login>-Sektion hat. Löst bei Bedarf einen frischen Login
+	 * aus (SiteCredentialService::ensureValidCookies() cached selbst), holt
+	 * aber NIE Zugangsdaten eines anderen Nutzers – ohne Nutzerkontext
+	 * (anonymer/System-Aufruf) bleibt die Cookie-Injektion aus.
 	 *
-	 * @return list<string> aufgelöste IPv4-/IPv6-Adressen (mind. eine)
-	 * @throws \Exception wenn Schema/Host ungültig, nicht auflösbar oder nicht-öffentlich ist.
+	 * @param array<string,string> $headers
 	 */
-	private function assertPublicHostAndResolve(string $url): array
+	private function appendSiteCredentialCookies(string $domain, array &$headers): void
 	{
-		$parsed = parse_url($url);
-		$scheme = strtolower($parsed['scheme'] ?? '');
-		if (!in_array($scheme, ['http', 'https'], true)) {
-			throw new \Exception('Nicht unterstütztes URL-Schema: ' . ($scheme ?: '(keins)'));
+		if ($this->currentUserId === null) {
+			return;
 		}
 
-		$host = $parsed['host'] ?? '';
-		if ($host === '') {
-			throw new \Exception('URL ohne Host: ' . $url);
+		$loginConfig = $this->siteCredentials->loadLoginConfig($domain);
+		if ($loginConfig === null) {
+			return;
 		}
 
-		$ips = $this->resolveHostIps($host);
-		if (empty($ips)) {
-			throw new \Exception('Host konnte nicht aufgelöst werden: ' . $host);
+		$cookies = $this->siteCredentials->ensureValidCookies((int) $this->currentUserId, $domain, $loginConfig);
+		if ($cookies === null || $cookies === []) {
+			return;
 		}
 
-		foreach ($ips as $ip) {
-			if (!$this->isPublicIp($ip)) {
-				throw new \Exception('Host löst auf eine private/reservierte Adresse auf: ' . $host . ' -> ' . $ip);
-			}
+		$cookiePairs = [];
+		foreach ($cookies as $name => $value) {
+			$cookiePairs[] = $name . '=' . str_replace(["\r", "\n", ';'], '', $value);
 		}
 
-		return $ips;
+		$existing = $headers['Cookie'] ?? '';
+		$headers['Cookie'] = $existing === '' ? implode('; ', $cookiePairs) : $existing . '; ' . implode('; ', $cookiePairs);
 	}
 
 	/**
-	 * Löst einen Hostnamen (oder eine IP-Literal) zu allen bekannten IPv4-/IPv6-
-	 * Adressen auf. Bei einer IP-Literal wird diese direkt zurückgegeben, ohne
-	 * DNS-Lookup.
-	 *
-	 * @return list<string>
+	 * Wirft PaywallLoginRequiredException, wenn die Domain eine
+	 * <login>-Sektion mit paywall-marker-Pattern hat, dieses Pattern im
+	 * gerade abgerufenen HTML greift UND der aufrufende Nutzer keine
+	 * gültigen Session-Cookies für die Domain hat (kein Login-Kontext, keine
+	 * Zugangsdaten hinterlegt, oder letzter Login-Versuch fehlgeschlagen).
+	 * Ein Treffer trotz gültiger Cookies wird NICHT geworfen – dann ist der
+	 * Cookie vermutlich einfach nicht (mehr) ausreichend, aber ein erneuter
+	 * Login wurde in appendSiteCredentialCookies() bereits versucht.
 	 */
-	private function resolveHostIps(string $host): array
+	private function assertNotPaywalled(string $url, string $rawHtml): void
 	{
-		$bareHost = trim($host, '[]'); // IPv6-Literale kommen aus parse_url() ohne eckige Klammern,
-										// zur Sicherheit trotzdem defensiv strippen.
-
-		if (filter_var($bareHost, FILTER_VALIDATE_IP) !== false) {
-			return [$bareHost];
+		$domain      = $this->normalizeDomain($url);
+		$loginConfig = $this->siteCredentials->loadLoginConfig($domain);
+		if ($loginConfig === null || $loginConfig->paywallMarkerPattern === null) {
+			return;
 		}
 
-		$ips = [];
-
-		$v4 = @gethostbynamel($bareHost);
-		if (is_array($v4)) {
-			$ips = array_merge($ips, $v4);
+		if (@preg_match($loginConfig->paywallMarkerPattern, $rawHtml) !== 1) {
+			return;
 		}
 
-		$v6records = @dns_get_record($bareHost, DNS_AAAA);
-		if (is_array($v6records)) {
-			foreach ($v6records as $record) {
-				if (!empty($record['ipv6'])) {
-					$ips[] = $record['ipv6'];
-				}
-			}
+		$hasValidCookies = $this->currentUserId !== null
+			&& $this->siteCredentials->getCachedCookies((int) $this->currentUserId, $domain) !== null;
+		if ($hasValidCookies) {
+			return;
 		}
 
-		return array_values(array_unique($ips));
+		throw new PaywallLoginRequiredException($domain, $loginConfig->page);
 	}
 
-	/**
-	 * true, wenn $ip weder in einem privaten (RFC1918 / IPv6 Unique-Local) noch in
-	 * einem reservierten Range liegt (Loopback, Link-Local inkl. 169.254.169.254
-	 * Cloud-Metadata, Multicast, Broadcast, Dokumentations-Ranges, …).
-	 */
-	private function isPublicIp(string $ip): bool
-	{
-		return filter_var(
-			$ip,
-			FILTER_VALIDATE_IP,
-			FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
-		) !== false;
-	}
-
-	/**
-	 * Baut CURLOPT_RESOLVE-Einträge, die $host:$port fest auf die geprüften $ips
-	 * pinnen. Schließt die TOCTOU-Lücke zwischen assertPublicHostAndResolve() und
-	 * dem eigentlichen curl-Connect: ohne Pinning könnte ein zweiter, vom
-	 * Angreifer kontrollierter DNS-Lookup (DNS-Rebinding) zwischen Prüfung und
-	 * Verbindungsaufbau eine private Adresse liefern. TLS-SNI und der Host-Header
-	 * bleiben unberührt, da curl den Hostnamen für beides weiterverwendet.
-	 *
-	 * @param list<string> $ips
-	 * @return list<string>
-	 */
-	private function buildResolvePin(string $host, int $port, array $ips): array
-	{
-		$bareHost = trim($host, '[]');
-		$pins     = [];
-		foreach ($ips as $ip) {
-			// IPv6-Adressen müssen in CURLOPT_RESOLVE in eckigen Klammern stehen.
-			$formatted = str_contains($ip, ':') ? '[' . $ip . ']' : $ip;
-			$pins[]    = $bareHost . ':' . $port . ':' . $formatted;
-		}
-		return $pins;
-	}
+	// SSRF-Guard (assertPublicHostAndResolve/resolveHostIps/isPublicIp/buildResolvePin) via SsrfSafeResolver-Trait.
 
 	// ──────────────────────────────────────────────────────────────────────────
 	// Encoding Detection

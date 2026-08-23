@@ -190,6 +190,20 @@ final class ArticleRepository {
     }
 
     /**
+     * Signalisiert, dass die Extraktion an einer Paywall gescheitert ist, für
+     * die der Nutzer keine (gültigen) Zugangsdaten hinterlegt hat - siehe
+     * Service\Login\PaywallLoginRequiredException. requires_login_domain !==
+     * null ist die Grundlage für den Login-Dialog im Client (siehe
+     * PLATFORMS.md).
+     */
+    public function markRequiresLogin(int $id, string $domain, string $loginPage): void {
+        $stmt = $this->db->prepare(
+            'UPDATE articles SET is_processing = 0, requires_login_domain = :domain, requires_login_page = :page WHERE id = :id'
+        );
+        $stmt->execute(['domain' => $domain, 'page' => $loginPage, 'id' => $id]);
+    }
+
+    /**
      * Setzt is_processing für Artikel zurück, die (z.B. durch einen
      * abgestürzten PHP-Prozess) länger als $ageMinutes in Bearbeitung
      * hängengeblieben sind - Pendant zu ArticleMapper::clearStuckProcessing().
@@ -253,6 +267,12 @@ final class ArticleRepository {
             'archivedAt' => $article['archived_at'],
             'scrollProgress' => (float) $article['scroll_progress'],
             'scrollUpdatedAt' => (int) $article['scroll_updated_at'],
+            // null im Normalfall. Gesetzt: Client soll einen Login-Dialog für
+            // requiresLoginDomain anbieten (requiresLoginPage als Info-Link),
+            // danach das Speichern erneut anstoßen (POST /api/articles erneut,
+            // kein dedizierter Retry-Endpunkt).
+            'requiresLoginDomain' => $article['requires_login_domain'] ?? null,
+            'requiresLoginPage' => $article['requires_login_page'] ?? null,
         ];
     }
 }
