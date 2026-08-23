@@ -169,6 +169,10 @@ a:hover { text-decoration: underline; }
     color: var(--accent-hover);
 }
 
+/* Status-Varianten (site-credentials-Tabelle in account.php) */
+.badge--ok { background: transparent; color: var(--success); }
+.badge--error { background: transparent; color: var(--danger); }
+
 /* ══ Leseliste (library.php) — Industry-Entwurf 1a ═══════════════════════
    Ein durchgehender Rahmen um Nav + Inhalt, oben die Nav-Zeile, darunter
    der horizontal scrollbare "Weiterlesen"-Streifen, darunter zweispaltig
