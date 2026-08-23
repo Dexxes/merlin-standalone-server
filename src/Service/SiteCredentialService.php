@@ -195,6 +195,16 @@ final class SiteCredentialService {
     }
 
     /**
+     * true, wenn config.php einen gültigen credential_cipher_key gesetzt hat.
+     * Für die Konto-Seite, damit ein fehlender Schlüssel als klare Meldung
+     * ("Server noch nicht eingerichtet") erscheint statt als kryptischer
+     * Fehler beim ersten Verbindungsversuch.
+     */
+    public function isCipherConfigured(): bool {
+        return $this->cipher->isConfigured();
+    }
+
+    /**
      * Alle Domains, die eine gültige <login>-Sektion im Bundle haben (aktuell
      * nur tagesspiegel.de) - Grundlage für die "Abo hinzufügen"-Auswahl auf
      * der Konto-Seite. Iteriert alle Bundle-Domains einmalig; bei der

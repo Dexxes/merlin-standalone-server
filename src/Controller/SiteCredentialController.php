@@ -27,12 +27,16 @@ final class SiteCredentialController {
     /**
      * Eigene Paywall-Zugangsdaten (Domain + Status, kein Passwort) plus alle
      * Domains, die überhaupt Paywall-Login unterstützen (für die
-     * "Verbinden"-Auswahl auf der Konto-Seite).
+     * "Verbinden"-Auswahl auf der Konto-Seite) und ob der Server für
+     * Paywall-Logins überhaupt eingerichtet ist (credential_cipher_key
+     * gesetzt) - die UI zeigt sonst eine klare Meldung statt eines
+     * kryptischen Fehlers beim ersten Verbindungsversuch.
      */
     public function index(Request $request): Response {
         return Response::json([
             'credentials' => $this->service->listForUser($request->authUserId()),
             'availableDomains' => $this->service->listLoginCapableDomains(),
+            'cipherConfigured' => $this->service->isCipherConfigured(),
         ]);
     }
 
@@ -47,6 +51,13 @@ final class SiteCredentialController {
 
         if ($username === '' || $password === '') {
             return Response::json(['message' => 'Benutzername und Passwort sind erforderlich.'], 400);
+        }
+
+        if (!$this->service->isCipherConfigured()) {
+            return Response::json(
+                ['message' => 'Der Server ist für Paywall-Logins noch nicht eingerichtet (credential_cipher_key fehlt in config.php). Bitte den Administrator kontaktieren.'],
+                503
+            );
         }
 
         try {

@@ -55,6 +55,22 @@ final class CredentialCipher {
         return $this->key = $key;
     }
 
+    /**
+     * true, wenn config.php einen gültigen Schlüssel gesetzt hat - prüft
+     * denselben Weg wie resolveKey(), aber ohne zu werfen. Für
+     * SiteCredentialService::isCipherConfigured(), damit die UI VOR einem
+     * fehlschlagenden Speicherversuch klar sagen kann, dass der Server noch
+     * nicht eingerichtet ist, statt dass der Nutzer einen kryptischen Fehler
+     * beim Verbinden bekommt.
+     */
+    public function isConfigured(): bool {
+        if ($this->key !== null) {
+            return true;
+        }
+        $key = base64_decode($this->base64Key, true);
+        return $key !== false && strlen($key) === SODIUM_CRYPTO_SECRETBOX_KEYBYTES;
+    }
+
     /** @return string Nonce + Ciphertext, base64-kodiert. */
     public function encrypt(string $plaintext): string {
         $key = $this->resolveKey();

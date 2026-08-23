@@ -15,6 +15,7 @@
 
 <h2 style="font-size:1.1em;margin-top:2em;">Paywall-Abos</h2>
 <p class="muted">Für Websites mit Abo-Paywall (z. B. Tagesspiegel Plus): eigene Zugangsdaten hinterlegen, damit Merlin auch bezahlpflichtige Artikel vollständig speichern kann. Das Passwort wird verschlüsselt gespeichert und nur zum Einloggen verwendet.</p>
+<p id="site-credentials-cipher-error" class="error" style="display:none;">Der Server ist für Paywall-Logins noch nicht eingerichtet (<code>credential_cipher_key</code> fehlt in <code>config.php</code>). Bitte den Administrator kontaktieren.</p>
 <table id="site-credentials"><tbody></tbody></table>
 <p id="site-credentials-empty" class="muted" style="display:none;">Keine Websites mit Paywall-Login-Unterstützung verfügbar.</p>
 
@@ -72,11 +73,19 @@ const STATUS_LABELS = {
     pending: 'Noch nicht geprüft',
 };
 
+let cipherConfigured = true;
+
 async function loadSiteCredentials() {
     const res = await fetch(basePath + '/api/user/site-credentials', { credentials: 'same-origin' });
     const data = await res.json();
     const body = document.querySelector('#site-credentials tbody');
     body.innerHTML = '';
+
+    // Fehlt der credential_cipher_key auf dem Server, kann kein Login
+    // gespeichert werden - klare Meldung statt eines Fehlers erst beim
+    // Absenden des Formulars (siehe SiteCredentialController::update()).
+    cipherConfigured = data.cipherConfigured !== false;
+    document.getElementById('site-credentials-cipher-error').style.display = cipherConfigured ? 'none' : 'block';
 
     const byDomain = new Map((data.credentials || []).map(c => [c.domain, c]));
     const domains = [...(data.availableDomains || [])].sort((a, b) => a.localeCompare(b));
@@ -88,10 +97,11 @@ async function loadSiteCredentials() {
         const cred = byDomain.get(domain) || null;
         const statusLabel = cred ? (STATUS_LABELS[cred.status] || cred.status) : 'Nicht verbunden';
         const statusClass = cred && cred.status === 'ok' ? 'badge badge--ok' : (cred ? 'badge badge--error' : 'badge');
+        const connectDisabled = cipherConfigured ? '' : 'disabled';
         const tr = document.createElement('tr');
         tr.innerHTML = `<td>${domain}</td><td><span class="${statusClass}">${statusLabel}</span></td>` +
             `<td class="row-actions">` +
-            `<button data-domain="${domain}" class="connect">${cred ? 'Login aktualisieren' : 'Verbinden'}</button>` +
+            `<button data-domain="${domain}" class="connect" ${connectDisabled}>${cred ? 'Login aktualisieren' : 'Verbinden'}</button>` +
             (cred ? `<button data-domain="${domain}" class="remove-credential">Entfernen</button>` : '') +
             `</td>`;
         body.appendChild(tr);
@@ -108,6 +118,9 @@ async function loadSiteCredentials() {
 }
 
 function openCredentialForm(domain) {
+    if (!cipherConfigured) {
+        return;
+    }
     document.getElementById('credential-domain').value = domain;
     document.getElementById('credential-form-label').textContent = 'E-Mail oder Benutzername für ' + domain;
     document.getElementById('credential-username').value = '';
