@@ -11,8 +11,11 @@ use Merlin\Auth\SessionService;
 use Merlin\Db\LoginFlowRepository;
 use Merlin\Db\SettingsRepository;
 use Merlin\Db\UserRepository;
+use Merlin\Db\UserSettingsRepository;
 use Merlin\Http\Request;
 use Merlin\Http\Response;
+use Merlin\I18n\LocaleResolver;
+use Merlin\I18n\Translator;
 
 /**
  * HTML-Seiten für Login/Registrierung/Passwort-Reset/Konto/Admin/Login-Flow -
@@ -29,6 +32,7 @@ final class PageController {
         private readonly SessionService $sessions,
         private readonly LoginFlowRepository $loginFlows,
         private readonly ApiTokenService $apiTokenService,
+        private readonly UserSettingsRepository $userSettings,
     ) {
     }
 
@@ -36,7 +40,7 @@ final class PageController {
         if ($this->sessions->currentUserId() !== null) {
             return Response::redirect('/library');
         }
-        return $this->render('login', [
+        return $this->render('login', $request, [
             'allowSelfRegistration' => $this->settings->getBool(SettingsRepository::ALLOW_SELF_REGISTRATION),
         ]);
     }
@@ -44,13 +48,14 @@ final class PageController {
     public function login(Request $request): Response {
         $username = (string) $request->input('username', '');
         $password = (string) $request->input('password', '');
+        $t = $this->translator($request);
 
         $user = $this->users->findByUsername($username);
         if ($user === null || !$this->hasher->verify($password, $user['password_hash'])) {
-            return $this->render('login', ['error' => 'Benutzername oder Passwort ist falsch.']);
+            return $this->render('login', $request, ['error' => $t->t('login.invalidCredentials')]);
         }
         if (!(bool) $user['is_active']) {
-            return $this->render('login', ['error' => 'Dieses Konto ist deaktiviert.']);
+            return $this->render('login', $request, ['error' => $t->t('login.accountDisabled')]);
         }
 
         $this->sessions->login((int) $user['id']);
@@ -62,11 +67,34 @@ final class PageController {
         return Response::redirect('/login');
     }
 
+    /**
+     * Setzt die Sprachpräferenz (Session, plus user_settings falls
+     * eingeloggt) und springt zur aufrufenden Seite zurück. `return` kommt
+     * unauthentifiziert aus der URL - nur ein Pfad-Präfix wird akzeptiert
+     * (kein "//host"-Protocol-Relative-Redirect), sonst Fallback /library.
+     */
+    public function setLanguage(Request $request): Response {
+        $code = (string) $request->routeParam('code');
+        if (in_array($code, LocaleResolver::SUPPORTED, true)) {
+            $this->sessions->setLanguage($code);
+            $userId = $this->sessions->currentUserId();
+            if ($userId !== null) {
+                $this->userSettings->setForUser($userId, 'language', $code);
+            }
+        }
+
+        $return = (string) $request->query('return', '/library');
+        if (!str_starts_with($return, '/') || str_starts_with($return, '//')) {
+            $return = '/library';
+        }
+        return Response::redirect($return);
+    }
+
     public function registerForm(Request $request): Response {
         if (!$this->settings->getBool(SettingsRepository::ALLOW_SELF_REGISTRATION)) {
             return Response::redirect('/login');
         }
-        return $this->render('register');
+        return $this->render('register', $request);
     }
 
     public function register(Request $request): Response {
@@ -77,10 +105,11 @@ final class PageController {
         $username = trim((string) $request->input('username', ''));
         $email = trim((string) $request->input('email', ''));
         $password = (string) $request->input('password', '');
+        $t = $this->translator($request);
 
-        $error = $this->validateNewAccount($username, $email, $password);
+        $error = $this->validateNewAccount($t, $username, $email, $password);
         if ($error !== null) {
-            return $this->render('register', ['error' => $error]);
+            return $this->render('register', $request, ['error' => $error]);
         }
 
         $user = $this->users->create($username, $email, $this->hasher->hash($password), 'user');
@@ -89,7 +118,7 @@ final class PageController {
     }
 
     public function passwordForgotForm(Request $request): Response {
-        return $this->render('password_forgot');
+        return $this->render('password_forgot', $request);
     }
 
     public function passwordForgot(Request $request): Response {
@@ -97,27 +126,34 @@ final class PageController {
         $this->passwordReset->requestReset($email);
         // Immer dieselbe Meldung, unabhängig davon ob die E-Mail existiert -
         // sonst liesse sich die Existenz von Accounts erraten.
-        return $this->render('password_forgot', [
-            'message' => 'Falls diese E-Mail-Adresse bekannt ist, wurde ein Link zum Zurücksetzen verschickt.',
+        return $this->render('password_forgot', $request, [
+            'message' => $this->translator($request)->t('passwordForgot.sentIfKnown'),
         ]);
     }
 
     public function passwordResetForm(Request $request): Response {
-        return $this->render('password_reset', ['token' => $request->query('token', '')]);
+        return $this->render('password_reset', $request, ['token' => $request->query('token', '')]);
     }
 
     public function passwordReset(Request $request): Response {
         $token = (string) $request->input('token', '');
         $password = (string) $request->input('password', '');
+        $t = $this->translator($request);
 
         if (strlen($password) < 8) {
-            return $this->render('password_reset', ['token' => $token, 'error' => 'Das Passwort muss mindestens 8 Zeichen lang sein.']);
+            return $this->render('password_reset', $request, [
+                'token' => $token,
+                'error' => $t->t('passwordReset.tooShort'),
+            ]);
         }
 
         try {
             $this->passwordReset->resetPassword($token, $password);
         } catch (\RuntimeException) {
-            return $this->render('password_reset', ['token' => $token, 'error' => 'Der Link ist ungültig oder abgelaufen.']);
+            return $this->render('password_reset', $request, [
+                'token' => $token,
+                'error' => $t->t('passwordReset.invalidToken'),
+            ]);
         }
 
         return Response::redirect('/login');
@@ -133,7 +169,7 @@ final class PageController {
             return Response::redirect('/login');
         }
 
-        return $this->render('account', [
+        return $this->render('account', $request, [
             'username' => $user['username'],
             'isAdmin' => $user['role'] === 'admin',
         ]);
@@ -146,7 +182,7 @@ final class PageController {
             return Response::redirect('/login');
         }
 
-        return $this->render('admin_users');
+        return $this->render('admin_users', $request);
     }
 
     public function adminContentFilters(Request $request): Response {
@@ -156,7 +192,7 @@ final class PageController {
             return Response::redirect('/login');
         }
 
-        return $this->render('admin_content_filters');
+        return $this->render('admin_content_filters', $request);
     }
 
     public function personalContentFilters(Request $request): Response {
@@ -164,7 +200,7 @@ final class PageController {
             return Response::redirect('/login');
         }
 
-        return $this->render('personal_content_filters');
+        return $this->render('personal_content_filters', $request);
     }
 
     public function library(Request $request): Response {
@@ -174,7 +210,7 @@ final class PageController {
         }
         $user = $this->users->findById($userId);
 
-        return $this->render('library', ['isAdmin' => $user !== null && $user['role'] === 'admin']);
+        return $this->render('library', $request, ['isAdmin' => $user !== null && $user['role'] === 'admin']);
     }
 
     /**
@@ -187,7 +223,7 @@ final class PageController {
             return Response::redirect('/login');
         }
 
-        return $this->render('article_reader', ['articleId' => (int) $request->routeParam('id')]);
+        return $this->render('article_reader', $request, ['articleId' => (int) $request->routeParam('id')]);
     }
 
     /**
@@ -201,14 +237,14 @@ final class PageController {
         $flow = $this->loginFlows->findByFlowToken($flowToken);
 
         if ($flow === null || $flow['expires_at'] < gmdate('c')) {
-            return $this->render('login_flow', ['state' => 'invalid']);
+            return $this->render('login_flow', $request, ['state' => 'invalid']);
         }
         if ($flow['user_id'] !== null) {
             // Bereits abgeschlossen (z.B. Reload nach Erfolg) - kein erneutes Token ausstellen.
-            return $this->render('login_flow', ['state' => 'done']);
+            return $this->render('login_flow', $request, ['state' => 'done']);
         }
 
-        return $this->render('login_flow', ['state' => 'form', 'flowToken' => $flowToken]);
+        return $this->render('login_flow', $request, ['state' => 'form', 'flowToken' => $flowToken]);
     }
 
     public function loginFlowSubmit(Request $request): Response {
@@ -216,25 +252,26 @@ final class PageController {
         $flow = $this->loginFlows->findByFlowToken($flowToken);
 
         if ($flow === null || $flow['expires_at'] < gmdate('c') || $flow['user_id'] !== null) {
-            return $this->render('login_flow', ['state' => 'invalid']);
+            return $this->render('login_flow', $request, ['state' => 'invalid']);
         }
 
         $username = (string) $request->input('username', '');
         $password = (string) $request->input('password', '');
+        $t = $this->translator($request);
 
         $user = $this->users->findByUsername($username);
         if ($user === null || !$this->hasher->verify($password, $user['password_hash'])) {
-            return $this->render('login_flow', [
+            return $this->render('login_flow', $request, [
                 'state' => 'form',
                 'flowToken' => $flowToken,
-                'error' => 'Benutzername oder Passwort ist falsch.',
+                'error' => $t->t('login.invalidCredentials'),
             ]);
         }
         if (!(bool) $user['is_active']) {
-            return $this->render('login_flow', [
+            return $this->render('login_flow', $request, [
                 'state' => 'form',
                 'flowToken' => $flowToken,
-                'error' => 'Dieses Konto ist deaktiviert.',
+                'error' => $t->t('login.accountDisabled'),
             ]);
         }
 
@@ -245,23 +282,34 @@ final class PageController {
         // direkt nach dem Verbinden fragt sonst erneut nach Zugangsdaten.
         $this->sessions->login((int) $user['id']);
 
-        return $this->render('login_flow', ['state' => 'done']);
+        return $this->render('login_flow', $request, ['state' => 'done']);
     }
 
-    private function validateNewAccount(string $username, string $email, string $password): ?string {
+    private function validateNewAccount(Translator $t, string $username, string $email, string $password): ?string {
         if ($username === '' || $email === '' || strlen($password) < 8) {
-            return 'Bitte alle Felder ausfüllen (Passwort mindestens 8 Zeichen).';
+            return $t->t('register.fillAllFields');
         }
         if ($this->users->findByUsername($username) !== null) {
-            return 'Dieser Benutzername ist bereits vergeben.';
+            return $t->t('register.usernameTaken');
         }
         if ($this->users->findByEmail($email) !== null) {
-            return 'Diese E-Mail-Adresse wird bereits verwendet.';
+            return $t->t('register.emailTaken');
         }
         return null;
     }
 
-    private function render(string $template, array $vars = []): Response {
+    private function translator(Request $request): Translator {
+        return Translator::forRequest($request, $this->sessions, $this->userSettings, $this->sessions->currentUserId());
+    }
+
+    /**
+     * `t`/`requestPath` landen per extract() in jedem Template - requestPath
+     * (Base-Path-frei, siehe Request::fromGlobals) speist den
+     * Sprachumschalter in partials/footer.php (GET /lang/{code}?return=...).
+     */
+    private function render(string $template, Request $request, array $vars = []): Response {
+        $vars['t'] = $this->translator($request);
+        $vars['requestPath'] = $request->path();
         extract($vars);
         ob_start();
         include __DIR__ . "/../../templates/{$template}.php";

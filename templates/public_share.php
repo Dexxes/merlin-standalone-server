@@ -1,19 +1,19 @@
-<?php $title = 'Geteilter Artikel – Merlin'; $layout = 'reader'; include __DIR__ . '/partials/header.php'; ?>
+<?php $title = $t->t('publicShare.pageTitle'); $layout = 'reader'; include __DIR__ . '/partials/header.php'; ?>
 
 <div class="reader-toolbar" id="toolbar" style="display:none;">
-    <button type="button" id="btn-tts">Vorlesen</button>
+    <button type="button" id="btn-tts"><?= htmlspecialchars($t->t('publicShare.listen'), ENT_QUOTES, 'UTF-8') ?></button>
 </div>
 <audio id="tts-audio" controls style="display:none;width:100%;margin-top:0.5em;"></audio>
 
-<p id="reader-status">Lädt…</p>
+<p id="reader-status"><?= htmlspecialchars($t->t('publicShare.loading'), ENT_QUOTES, 'UTF-8') ?></p>
 
 <div id="password-gate" style="display:none;">
-    <h1>Passwort erforderlich</h1>
-    <p class="muted">Dieser Artikel ist passwortgeschützt.</p>
+    <h1><?= htmlspecialchars($t->t('publicShare.passwordRequiredHeading'), ENT_QUOTES, 'UTF-8') ?></h1>
+    <p class="muted"><?= htmlspecialchars($t->t('publicShare.passwordProtectedHint'), ENT_QUOTES, 'UTF-8') ?></p>
     <form id="unlock-form">
-        <label for="share-password">Passwort</label>
+        <label for="share-password"><?= htmlspecialchars($t->t('common.password'), ENT_QUOTES, 'UTF-8') ?></label>
         <input type="password" id="share-password" required autofocus>
-        <button type="submit">Entsperren</button>
+        <button type="submit"><?= htmlspecialchars($t->t('publicShare.unlockSubmit'), ENT_QUOTES, 'UTF-8') ?></button>
     </form>
     <p id="unlock-error" class="error" style="display:none;"></p>
 </div>
@@ -26,6 +26,14 @@
 </article>
 
 <script>
+const I18N = <?= json_encode($t->forJs([
+    'publicShare.untitledArticle',
+    'publicShare.linkExpired',
+    'publicShare.articleNotFound',
+    'publicShare.wrongPassword',
+    'publicShare.loading',
+    'publicShare.minutesShort',
+]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const token = <?= json_encode($token) ?>;
 
 // Portiert aus ArticleReader.vue (sanitizeHref): lässt nur http(s)-Schemata
@@ -171,7 +179,7 @@ function renderHighlightsReadOnly(container, highlights) {
 
 // ── Laden ──────────────────────────────────────────────────────────────
 function renderArticle(article) {
-    document.title = (article.title || 'Artikel') + ' – Merlin';
+    document.title = (article.title || I18N['publicShare.untitledArticle']) + ' – Merlin';
     document.getElementById('a-title').textContent = article.title || article.url;
 
     const excerptEl = document.getElementById('a-excerpt');
@@ -209,7 +217,7 @@ function renderArticle(article) {
     }
     if (article.readingTime) {
         const span = document.createElement('span');
-        span.textContent = article.readingTime + ' min';
+        span.textContent = I18N['publicShare.minutesShort'].replace('{minutes}', article.readingTime);
         meta.appendChild(span);
     }
 
@@ -246,11 +254,11 @@ async function load() {
         return;
     }
     if (res.status === 410) {
-        document.getElementById('reader-status').textContent = 'Dieser Link ist abgelaufen.';
+        document.getElementById('reader-status').textContent = I18N['publicShare.linkExpired'];
         return;
     }
     if (!res.ok) {
-        document.getElementById('reader-status').textContent = 'Artikel nicht gefunden.';
+        document.getElementById('reader-status').textContent = I18N['publicShare.articleNotFound'];
         return;
     }
 
@@ -271,14 +279,14 @@ document.getElementById('unlock-form').addEventListener('submit', async (e) => {
     });
 
     if (!res.ok) {
-        errorEl.textContent = 'Falsches Passwort.';
+        errorEl.textContent = I18N['publicShare.wrongPassword'];
         errorEl.style.display = 'block';
         return;
     }
 
     document.getElementById('password-gate').style.display = 'none';
     document.getElementById('reader-status').style.display = 'block';
-    document.getElementById('reader-status').textContent = 'Lädt…';
+    document.getElementById('reader-status').textContent = I18N['publicShare.loading'];
     load();
 });
 

@@ -1,5 +1,5 @@
 <?php
-$title = 'Artikel – Merlin';
+$title = $t->t('articleReader.pageTitle');
 $layout = 'reader';
 include __DIR__ . '/partials/header.php';
 require_once __DIR__ . '/partials/icons.php';
@@ -8,38 +8,38 @@ require_once __DIR__ . '/partials/icons.php';
 <div id="reader-progress-bar" class="reader-progress-bar" style="display:none;"></div>
 
 <div class="reader-dock" id="toolbar" style="display:none;">
-    <a href="<?= url('/library'); ?>" class="dock-btn" title="Zurück zur Leseliste"><?= icon('arrow-left') ?></a>
+    <a href="<?= url('/library'); ?>" class="dock-btn" title="<?= htmlspecialchars($t->t('articleReader.backToLibrary'), ENT_QUOTES, 'UTF-8') ?>"><?= icon('arrow-left') ?></a>
 
     <div class="dock-divider"></div>
 
-    <button type="button" id="btn-archive" class="dock-btn" title="Archivieren"><?= icon('archive') ?></button>
-    <button type="button" id="btn-favorite" class="dock-btn" title="Zu Favoriten hinzufügen"><?= icon('star') ?></button>
+    <button type="button" id="btn-archive" class="dock-btn" title="<?= htmlspecialchars($t->t('articleReader.archive'), ENT_QUOTES, 'UTF-8') ?>"><?= icon('archive') ?></button>
+    <button type="button" id="btn-favorite" class="dock-btn" title="<?= htmlspecialchars($t->t('articleReader.addFavorite'), ENT_QUOTES, 'UTF-8') ?>"><?= icon('star') ?></button>
 
     <div class="dock-item">
         <details id="share-details">
-            <summary class="dock-btn" title="Teilen"><?= icon('share') ?></summary>
+            <summary class="dock-btn" title="<?= htmlspecialchars($t->t('articleReader.share'), ENT_QUOTES, 'UTF-8') ?>"><?= icon('share') ?></summary>
             <div id="share-popover-panel" class="dock-menu">
-                <p id="share-status" class="muted">Lädt…</p>
+                <p id="share-status" class="muted"><?= htmlspecialchars($t->t('articleReader.loading'), ENT_QUOTES, 'UTF-8') ?></p>
                 <div id="share-link-row" style="display:none;">
                     <input type="text" id="share-link-input" readonly>
-                    <button type="button" id="share-copy-btn">Kopieren</button>
+                    <button type="button" id="share-copy-btn"><?= htmlspecialchars($t->t('articleReader.copy'), ENT_QUOTES, 'UTF-8') ?></button>
                 </div>
                 <div id="share-manage" style="display:none;">
                     <form id="share-password-form">
-                        <input type="password" id="share-password-input" placeholder="Passwort (leer = kein Schutz)">
-                        <button type="submit">Setzen</button>
+                        <input type="password" id="share-password-input" placeholder="<?= htmlspecialchars($t->t('articleReader.passwordNoProtectionPlaceholder'), ENT_QUOTES, 'UTF-8') ?>">
+                        <button type="submit"><?= htmlspecialchars($t->t('articleReader.set'), ENT_QUOTES, 'UTF-8') ?></button>
                     </form>
                     <form id="share-expiry-form">
                         <input type="date" id="share-expiry-input">
-                        <button type="submit">Setzen</button>
+                        <button type="submit"><?= htmlspecialchars($t->t('articleReader.set'), ENT_QUOTES, 'UTF-8') ?></button>
                         <button type="button" id="share-expiry-clear">✕</button>
                     </form>
                     <div class="share-actions-row">
-                        <button type="button" id="share-regenerate-btn">Regenerieren</button>
-                        <button type="button" id="share-revoke-btn">Widerrufen</button>
+                        <button type="button" id="share-regenerate-btn"><?= htmlspecialchars($t->t('articleReader.regenerate'), ENT_QUOTES, 'UTF-8') ?></button>
+                        <button type="button" id="share-revoke-btn"><?= htmlspecialchars($t->t('articleReader.revoke'), ENT_QUOTES, 'UTF-8') ?></button>
                     </div>
                 </div>
-                <button type="button" id="share-create-btn" style="display:none;">Link erstellen</button>
+                <button type="button" id="share-create-btn" style="display:none;"><?= htmlspecialchars($t->t('articleReader.createLink'), ENT_QUOTES, 'UTF-8') ?></button>
             </div>
         </details>
     </div>
@@ -48,14 +48,14 @@ require_once __DIR__ . '/partials/icons.php';
 
     <div class="dock-item">
         <details id="more-details">
-            <summary class="dock-btn" title="Mehr"><?= icon('more-horizontal') ?></summary>
+            <summary class="dock-btn" title="<?= htmlspecialchars($t->t('articleReader.more'), ENT_QUOTES, 'UTF-8') ?>"><?= icon('more-horizontal') ?></summary>
             <div class="dock-menu dock-menu--list">
                 <button type="button" id="btn-read" class="dock-menu-item"><?= icon('check-circle') ?><span id="btn-read-label"></span></button>
-                <button type="button" id="btn-open-tags" class="dock-menu-item"><?= icon('tag') ?><span>Tags</span></button>
-                <button type="button" id="btn-font" class="dock-menu-item"><?= icon('type') ?><span>Textgröße ändern</span></button>
-                <button type="button" id="btn-tts" class="dock-menu-item"><?= icon('volume') ?><span>Vorlesen</span></button>
-                <a href="<?= url('/api/articles/' . (int) $articleId . '/export/html') ?>" class="dock-menu-item"><?= icon('download') ?><span>Exportieren</span></a>
-                <button type="button" id="btn-delete" class="dock-menu-item dock-menu-item--danger"><?= icon('trash') ?><span>Löschen</span></button>
+                <button type="button" id="btn-open-tags" class="dock-menu-item"><?= icon('tag') ?><span><?= htmlspecialchars($t->t('articleReader.tags'), ENT_QUOTES, 'UTF-8') ?></span></button>
+                <button type="button" id="btn-font" class="dock-menu-item"><?= icon('type') ?><span><?= htmlspecialchars($t->t('articleReader.changeFontSize'), ENT_QUOTES, 'UTF-8') ?></span></button>
+                <button type="button" id="btn-tts" class="dock-menu-item"><?= icon('volume') ?><span><?= htmlspecialchars($t->t('articleReader.listen'), ENT_QUOTES, 'UTF-8') ?></span></button>
+                <a href="<?= url('/api/articles/' . (int) $articleId . '/export/html') ?>" class="dock-menu-item"><?= icon('download') ?><span><?= htmlspecialchars($t->t('articleReader.export'), ENT_QUOTES, 'UTF-8') ?></span></a>
+                <button type="button" id="btn-delete" class="dock-menu-item dock-menu-item--danger"><?= icon('trash') ?><span><?= htmlspecialchars($t->t('articleReader.delete'), ENT_QUOTES, 'UTF-8') ?></span></button>
             </div>
         </details>
     </div>
@@ -65,11 +65,11 @@ require_once __DIR__ . '/partials/icons.php';
          so den Dock-Anker (siehe ArticleReader.vue: "shares the desktop dock anchor"). -->
     <div class="dock-item dock-item--hidden-trigger">
         <details id="tag-details">
-            <summary class="dock-visually-hidden">Tags</summary>
+            <summary class="dock-visually-hidden"><?= htmlspecialchars($t->t('articleReader.tags'), ENT_QUOTES, 'UTF-8') ?></summary>
             <div id="tag-popover-panel" class="dock-menu">
                 <div id="tag-checkboxes"></div>
                 <div class="new-tag-row">
-                    <input type="text" id="new-tag-name" placeholder="Neuer Tag…">
+                    <input type="text" id="new-tag-name" placeholder="<?= htmlspecialchars($t->t('articleReader.newTagPlaceholder'), ENT_QUOTES, 'UTF-8') ?>">
                     <input type="color" id="new-tag-color" value="#0082c9">
                     <button type="button" id="new-tag-submit">+</button>
                 </div>
@@ -78,9 +78,9 @@ require_once __DIR__ . '/partials/icons.php';
     </div>
 </div>
 <audio id="tts-audio" controls></audio>
-<p class="muted" id="highlight-hint" style="display:none;font-size:0.82em;margin-top:0.4em;">Text markieren, um eine Farbe für die Hervorhebung auszuwählen. Klick auf eine Markierung entfernt sie wieder.</p>
+<p class="muted" id="highlight-hint" style="display:none;font-size:0.82em;margin-top:0.4em;"><?= htmlspecialchars($t->t('articleReader.highlightHint'), ENT_QUOTES, 'UTF-8') ?></p>
 
-<p id="reader-status">Lädt…</p>
+<p id="reader-status"><?= htmlspecialchars($t->t('articleReader.loading'), ENT_QUOTES, 'UTF-8') ?></p>
 
 <article id="article-root" style="display:none;">
     <h1 id="a-title"></h1>
@@ -91,6 +91,23 @@ require_once __DIR__ . '/partials/icons.php';
 </article>
 
 <script>
+const I18N = <?= json_encode($t->forJs([
+    'articleReader.removeHighlight',
+    'articleReader.untitledArticle',
+    'articleReader.minutesShort',
+    'articleReader.markAsUnread',
+    'articleReader.markAsRead',
+    'articleReader.removeFavorite',
+    'articleReader.addFavorite',
+    'articleReader.restore',
+    'articleReader.archive',
+    'articleReader.confirmDeleteArticle',
+    'articleReader.noTagsYet',
+    'articleReader.passwordChangePlaceholder',
+    'articleReader.passwordNoProtectionPlaceholder',
+    'articleReader.confirmRevokeLink',
+    'articleReader.notFoundOrForbidden',
+]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const articleId = <?= (int) $articleId ?>;
 const FONT_SIZE_STEPS = [15, 17, 19, 21, 24];
 const FONT_SIZE_KEY = 'merlin_reader_font_size';
@@ -381,7 +398,7 @@ class HighlightEngine {
 
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = 'Markierung entfernen';
+        btn.textContent = I18N['articleReader.removeHighlight'];
         btn.style.cssText =
             'display: block; width: 100%; padding: 8px 14px; border: none; background: none;' +
             'cursor: pointer; text-align: left; font-size: 14px; color: #c00; white-space: nowrap;';
@@ -546,7 +563,7 @@ document.getElementById('btn-font').addEventListener('click', () => {
 // Drittseiten und sind damit nicht vertrauenswürdig. Einzige Ausnahme ist
 // article-body weiter unten (siehe Kommentar dort). ──────────────────────
 function renderArticle() {
-    document.title = (article.title || 'Artikel') + ' – Merlin';
+    document.title = (article.title || I18N['articleReader.untitledArticle']) + ' – Merlin';
     document.getElementById('a-title').textContent = article.title || article.url;
 
     const excerptEl = document.getElementById('a-excerpt');
@@ -584,7 +601,7 @@ function renderArticle() {
     }
     if (article.readingTime) {
         const span = document.createElement('span');
-        span.textContent = article.readingTime + ' min';
+        span.textContent = I18N['articleReader.minutesShort'].replace('{minutes}', article.readingTime);
         meta.appendChild(span);
     }
 
@@ -624,14 +641,14 @@ function renderTagChips() {
 }
 
 function updateToolbar() {
-    document.getElementById('btn-read-label').textContent = article.isRead ? 'Als ungelesen markieren' : 'Als gelesen markieren';
+    document.getElementById('btn-read-label').textContent = article.isRead ? I18N['articleReader.markAsUnread'] : I18N['articleReader.markAsRead'];
 
     const favBtn = document.getElementById('btn-favorite');
-    favBtn.title = article.isFavorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen';
+    favBtn.title = article.isFavorite ? I18N['articleReader.removeFavorite'] : I18N['articleReader.addFavorite'];
     favBtn.classList.toggle('is-favorite', !!article.isFavorite);
 
     const archBtn = document.getElementById('btn-archive');
-    archBtn.title = article.isArchived ? 'Wiederherstellen' : 'Archivieren';
+    archBtn.title = article.isArchived ? I18N['articleReader.restore'] : I18N['articleReader.archive'];
 }
 
 async function apiPut(path) {
@@ -655,7 +672,7 @@ document.getElementById('btn-archive').addEventListener('click', async () => {
 });
 
 document.getElementById('btn-delete').addEventListener('click', async () => {
-    if (!confirm('Artikel wirklich löschen?')) return;
+    if (!confirm(I18N['articleReader.confirmDeleteArticle'])) return;
     await fetch(basePath + '/api/articles/' + articleId, { method: 'DELETE', credentials: 'same-origin' });
     location.href = basePath + '/library';
 });
@@ -671,7 +688,7 @@ function renderTagCheckboxes() {
     if (allTags.length === 0) {
         const p = document.createElement('p');
         p.className = 'muted';
-        p.textContent = 'Noch keine Tags angelegt.';
+        p.textContent = I18N['articleReader.noTagsYet'];
         container.appendChild(p);
         return;
     }
@@ -840,8 +857,8 @@ function renderShare() {
     document.getElementById('share-link-input').value = currentShare.url || '';
     document.getElementById('share-password-input').value = '';
     document.getElementById('share-password-input').placeholder = currentShare.hasPassword
-        ? 'Neues Passwort (leer = entfernen)'
-        : 'Passwort (leer = kein Schutz)';
+        ? I18N['articleReader.passwordChangePlaceholder']
+        : I18N['articleReader.passwordNoProtectionPlaceholder'];
     document.getElementById('share-expiry-input').value = currentShare.expiresAt
         ? currentShare.expiresAt.slice(0, 10)
         : '';
@@ -926,7 +943,7 @@ document.getElementById('share-regenerate-btn').addEventListener('click', async 
 });
 
 document.getElementById('share-revoke-btn').addEventListener('click', async () => {
-    if (!confirm('Link wirklich widerrufen?')) return;
+    if (!confirm(I18N['articleReader.confirmRevokeLink'])) return;
     await fetch(basePath + '/api/articles/' + articleId + '/share', { method: 'DELETE', credentials: 'same-origin' });
     currentShare = { enabled: false };
     renderShare();
@@ -941,7 +958,7 @@ async function load() {
     ]);
 
     if (!articleRes.ok) {
-        document.getElementById('reader-status').textContent = 'Artikel nicht gefunden oder keine Berechtigung.';
+        document.getElementById('reader-status').textContent = I18N['articleReader.notFoundOrForbidden'];
         return;
     }
 

@@ -10,6 +10,7 @@ use Merlin\Db\ArticleShareRepository;
 use Merlin\Db\HighlightRepository;
 use Merlin\Http\Request;
 use Merlin\Http\Response;
+use Merlin\I18n\Translator;
 use Merlin\Service\TtsStreamService;
 
 /**
@@ -35,7 +36,7 @@ final class PublicShareController {
 
     /** HTML-Shell für die öffentliche Ansicht (Zustandslogik läuft komplett im Browser-JS). */
     public function show(Request $request): Response {
-        return Response::html($this->render('public_share', ['token' => (string) $request->routeParam('token')]));
+        return Response::html($this->render('public_share', $request, ['token' => (string) $request->routeParam('token')]));
     }
 
     public function unlock(Request $request): Response {
@@ -144,7 +145,12 @@ final class PublicShareController {
         return $share;
     }
 
-    private function render(string $template, array $vars = []): string {
+    private function render(string $template, Request $request, array $vars = []): string {
+        // Kein UserSettingsRepository nötig - die öffentliche Ansicht kennt
+        // keinen eingeloggten Nutzer, Session + Accept-Language reichen (siehe
+        // LocaleResolver).
+        $vars['t'] = Translator::forRequest($request, $this->sessions);
+        $vars['requestPath'] = $request->path();
         extract($vars);
         ob_start();
         include __DIR__ . "/../../templates/{$template}.php";

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Merlin\Controller;
 
+use Merlin\Auth\SessionService;
 use Merlin\Http\Request;
 use Merlin\Http\Response;
+use Merlin\I18n\Translator;
 use Merlin\Service\Login\LoginFailedException;
 use Merlin\Service\SiteCredentialService;
 
@@ -21,6 +23,7 @@ use Merlin\Service\SiteCredentialService;
 final class SiteCredentialController {
     public function __construct(
         private readonly SiteCredentialService $service,
+        private readonly SessionService $sessions,
     ) {
     }
 
@@ -49,13 +52,15 @@ final class SiteCredentialController {
         $username = trim((string) $request->input('username', ''));
         $password = (string) $request->input('password', '');
 
+        $t = Translator::forRequest($request, $this->sessions);
+
         if ($username === '' || $password === '') {
-            return Response::json(['message' => 'Benutzername und Passwort sind erforderlich.'], 400);
+            return Response::json(['message' => $t->t('siteCredentialsApi.usernamePasswordRequired')], 400);
         }
 
         if (!$this->service->isCipherConfigured()) {
             return Response::json(
-                ['message' => 'Der Server ist für Paywall-Logins noch nicht eingerichtet (credential_cipher_key fehlt in config.php). Bitte den Administrator kontaktieren.'],
+                ['message' => $t->t('siteCredentialsApi.cipherNotConfigured')],
                 503
             );
         }

@@ -41,6 +41,7 @@ $pages = new PageController(
     $app->sessions(),
     $app->loginFlows(),
     $app->apiTokenService(),
+    $app->userSettings(),
 );
 $account = new AccountController($app->apiTokenRepository(), $app->apiTokenService());
 $admin = new AdminController($app->users(), $app->settings(), $app->passwordHasher(), $app->contentFilterRepository(), $app->siteCredentialRepository());
@@ -51,6 +52,7 @@ $contentFilters = new ContentFilterController(
     $app->contentFilterMerger(),
     $app->contentExtractor(),
     $app->logger(),
+    $app->sessions(),
 );
 $userContentFilters = new UserContentFilterController(
     $app->contentFilterRepository(),
@@ -58,8 +60,9 @@ $userContentFilters = new UserContentFilterController(
     $app->contentFilterMerger(),
     $app->contentExtractor(),
     $app->logger(),
+    $app->sessions(),
 );
-$siteCredentials = new SiteCredentialController($app->siteCredentialService());
+$siteCredentials = new SiteCredentialController($app->siteCredentialService(), $app->sessions());
 $tags = new TagController($app->tags(), $app->articles());
 $highlights = new HighlightController($app->highlights(), $app->articles());
 $loginFlow = new LoginFlowController($app->loginFlows(), $app->users());
@@ -93,6 +96,7 @@ $router->add('GET', '/account/content-filters', $pages->personalContentFilters(.
 $router->add('GET', '/library', $pages->library(...));
 $router->add('GET', '/articles/{id}', $pages->articleReader(...));
 $router->add('GET', '/', fn() => Response::redirect('/library'));
+$router->add('GET', '/lang/{code}', $pages->setLanguage(...));
 
 // Login-Flow-v2-Klon (siehe LoginFlowController-Docblock): unauthentifiziert,
 // bildet Nextclouds Login-Flow-v2-Protokoll nach, damit native Clients ihre

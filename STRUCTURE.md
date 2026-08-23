@@ -21,6 +21,10 @@ merlin-server/
 │   │   └── Middleware/
 │   │       ├── AuthMiddleware.php       # Basic Auth (User+API-Token) ODER Session-Cookie
 │   │       └── AdminOnlyMiddleware.php
+│   ├── I18n/
+│   │   ├── Translator.php        # t()/n()/forJs(), lädt lang/{locale}.php (siehe unten)
+│   │   ├── LocaleResolver.php    # Sprachauswahl je Request: user_settings > Session > Accept-Language > "de"
+│   │   └── lang/en.php, de.php   # generiert von tools/i18n/export.py --platform merlin-server, NICHT direkt editieren
 │   ├── Auth/
 │   │   ├── PasswordHasher.php     # password_hash()/password_verify()
 │   │   ├── ApiTokenService.php    # Klartext-Token ⇄ SHA-256-Hash in api_tokens
@@ -98,6 +102,25 @@ merlin-server/
 
 - **Kein Framework**: `Http/Router.php` ist ein ~70-Zeilen-Regex-Router,
   Middleware sind einfache `callable(Request): ?Response`.
+- **Lokalisierung (de/en)**: `Merlin\I18n\Translator` lädt eine flache PHP-Array-
+  Datei (`lang/{locale}.php`, generiert aus `localization/strings/{lang}.json`
+  unter dem `merlinServer.*`-Namespace - eigenständig, referenziert keine
+  `nextcloudWeb.*`-Keys, siehe "Sonderfall merlin-server" in
+  `localization/schema.md`). Anders als bei merlin-nextclouds gettext-Ansatz
+  ist der Key ein sprechender Dot-Pfad, kein englischer Literal-String - es
+  gibt keine gettext-Infrastruktur, der Dot-Key selbst ist der
+  Laufzeit-Lookup. `Merlin\I18n\LocaleResolver` ermittelt die Sprache je
+  Request: gespeicherte Präferenz des eingeloggten Nutzers (`user_settings`,
+  Key `language`) > PHP-Session (deckt ausgeloggte Seiten ab) >
+  `Accept-Language`-Header > Default `de`. `PageController::render()` reicht
+  `$t` (Translator) und `$requestPath` per `extract()` an jedes Template
+  durch; `PublicShareController` baut sich seinen Translator separat (kein
+  `UserSettingsRepository`-Zugriff nötig, öffentliche Ansicht kennt keinen
+  eingeloggten Nutzer). Strings innerhalb von `<script>`-Blöcken bekommen ein
+  whitelistetes `I18N`-Objekt (`json_encode($t->forJs([...]))`) statt eines
+  globalen Dumps. Sprachwechsel läuft über `GET /lang/{code}?return=<Pfad>`
+  (Link im Footer, `partials/footer.php`) und schreibt in Session bzw.
+  zusätzlich `user_settings`, falls eingeloggt.
 - **Client-Auth**: API-Clients (iOS/Android/Extensions) senden HTTP Basic Auth
   mit Username + selbst erzeugtem API-Token (`AccountController`/`account.php`)
   statt eines Nextcloud-App-Passworts. Web-UI nutzt eine PHP-Session.

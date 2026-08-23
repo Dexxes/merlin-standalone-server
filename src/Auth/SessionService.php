@@ -44,6 +44,17 @@ final class SessionService {
         return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
     }
 
+    /** Sprachwahl für ausgeloggte Seiten (Login/Registrierung/Passwort/Public-Share) - siehe I18n\LocaleResolver. */
+    public function language(): ?string {
+        $this->start();
+        return isset($_SESSION['language']) ? (string) $_SESSION['language'] : null;
+    }
+
+    public function setLanguage(string $locale): void {
+        $this->start();
+        $_SESSION['language'] = $locale;
+    }
+
     /**
      * Merkt sich pro Browser-Session, welche passwortgeschützten Share-Links
      * bereits entsperrt wurden (siehe PublicShareController::unlock()) -

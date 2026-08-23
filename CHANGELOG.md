@@ -22,3 +22,16 @@ All notable changes to merlin-server are documented here. Format based on
   HTML export, ported from merlin-nextcloud
 - Text-to-speech (TTS) via a local Piper pipeline, proxied per-request to a
   configurable daemon URL
+- Paywall subscription login (e.g. Tagesspiegel Plus): encrypted per-user
+  credentials, automatic login and session-cookie injection when fetching
+  articles, plus a "Paywall-Abos" section on the account page to
+  connect/disconnect a site login
+- Localization (German/English): all HTML templates and the user-facing
+  messages of the content-filter and paywall-subscription JSON APIs are now
+  translated via a new `Merlin\I18n\Translator`, driven by the project's
+  central `localization/strings/{en,de}.json` source of truth (new
+  `merlinServer.*` namespace, exported to `src/I18n/lang/{en,de}.php` by
+  `tools/i18n/export.py --platform merlin-server`). Language is resolved per
+  request (logged-in user's saved preference > session > `Accept-Language`
+  header > German default) and can be switched explicitly via a link in the
+  page footer.

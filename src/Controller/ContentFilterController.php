@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Merlin\Controller;
 
+use Merlin\Auth\SessionService;
 use Merlin\Db\ContentFilterRepository;
 use Merlin\Http\Request;
 use Merlin\Http\Response;
+use Merlin\I18n\Translator;
 use Merlin\Service\ContentExtractorService;
 use Merlin\Service\ContentFilterMerger;
 use Merlin\Service\ContentFilterSchema;
@@ -30,6 +32,7 @@ final class ContentFilterController {
         private readonly ContentFilterMerger $merger,
         private readonly ContentExtractorService $extractor,
         private readonly LoggerInterface $logger,
+        private readonly SessionService $sessions,
     ) {
     }
 
@@ -39,14 +42,15 @@ final class ContentFilterController {
 
     public function show(Request $request): Response {
         $domain = (string) $request->routeParam('domain');
+        $t = $this->translator($request);
         if (!$this->repository->isValidDomain($domain)) {
-            return $this->error('Ungültiger Domainname.', 400);
+            return $this->error($t->t('cfApi.invalidDomain'), 400);
         }
 
         $bundle = $this->repository->readBundle($domain);
         $custom = $this->repository->readAdminCustom($domain);
         if ($bundle === null && $custom === null) {
-            return $this->error('Für diese Domain existiert kein Filter.', 404);
+            return $this->error($t->t('cfApi.noFilterForDomain'), 404);
         }
 
         return Response::json($this->describe($domain, $bundle, $custom));
@@ -54,14 +58,15 @@ final class ContentFilterController {
 
     public function update(Request $request): Response {
         $domain = (string) $request->routeParam('domain');
+        $t = $this->translator($request);
         if (!$this->repository->isValidDomain($domain)) {
-            return $this->error('Ungültiger Domainname.', 400);
+            return $this->error($t->t('cfApi.invalidDomain'), 400);
         }
 
         $xml = (string) $request->input('xml', '');
         $errors = $this->validator->validate($xml, $domain);
         if ($errors !== []) {
-            return Response::json(['message' => 'Der Filter ist ungültig.', 'errors' => $errors], 400);
+            return Response::json(['message' => $t->t('cfApi.filterInvalid'), 'errors' => $errors], 400);
         }
 
         try {
@@ -77,7 +82,7 @@ final class ContentFilterController {
     public function destroy(Request $request): Response {
         $domain = (string) $request->routeParam('domain');
         if (!$this->repository->isValidDomain($domain)) {
-            return $this->error('Ungültiger Domainname.', 400);
+            return $this->error($this->translator($request)->t('cfApi.invalidDomain'), 400);
         }
 
         $this->repository->deleteAdminCustom($domain);
@@ -87,13 +92,14 @@ final class ContentFilterController {
     /** Lädt den Admin-Custom-Filter als Datei herunter, ersatzweise den Bundle-Filter. */
     public function export(Request $request): Response {
         $domain = (string) $request->routeParam('domain');
+        $t = $this->translator($request);
         if (!$this->repository->isValidDomain($domain)) {
-            return $this->error('Ungültiger Domainname.', 400);
+            return $this->error($t->t('cfApi.invalidDomain'), 400);
         }
 
         $xml = $this->repository->readAdminCustom($domain) ?? $this->repository->readBundle($domain);
         if ($xml === null) {
-            return $this->error('Für diese Domain existiert kein Filter.', 404);
+            return $this->error($t->t('cfApi.noFilterForDomain'), 404);
         }
 
         return Response::download($xml, $domain . '.xml', 'application/xml');
@@ -107,22 +113,23 @@ final class ContentFilterController {
      */
     public function test(Request $request): Response {
         $domain = (string) $request->routeParam('domain');
+        $t = $this->translator($request);
         if (!$this->repository->isValidDomain($domain)) {
-            return $this->error('Ungültiger Domainname.', 400);
+            return $this->error($t->t('cfApi.invalidDomain'), 400);
         }
 
         $url = trim((string) $request->input('url', ''));
         if ($url === '') {
-            return $this->error('Es wurde keine Test-URL übergeben.', 400);
+            return $this->error($t->t('cfApi.noTestUrl'), 400);
         }
 
         $urlDomain = $this->repository->normalizeUrlDomain($url);
         if ($urlDomain === '') {
-            return $this->error('Die URL enthält keinen Hostnamen.', 400);
+            return $this->error($t->t('cfApi.urlNoHostname'), 400);
         }
         if ($urlDomain !== $domain) {
             return $this->error(
-                sprintf('Die URL gehört zu "%s", getestet wird der Filter für "%s".', $urlDomain, $domain),
+                $t->t('cfApi.urlDomainMismatch', ['urlDomain' => $urlDomain, 'domain' => $domain]),
                 400
             );
         }
@@ -132,7 +139,7 @@ final class ContentFilterController {
         if ($draftXml !== '') {
             $errors = $this->validator->validate($draftXml, $domain);
             if ($errors !== []) {
-                return Response::json(['message' => 'Der zu testende Filter ist ungültig.', 'errors' => $errors], 400);
+                return Response::json(['message' => $t->t('cfApi.testFilterInvalid'), 'errors' => $errors], 400);
             }
             $this->repository->setPendingAdminCustom($domain, $draftXml);
             $draftApplied = true;
@@ -201,5 +208,9 @@ final class ContentFilterController {
 
     private function error(string $message, int $status): Response {
         return Response::json(['message' => $message], $status);
+    }
+
+    private function translator(Request $request): Translator {
+        return Translator::forRequest($request, $this->sessions);
     }
 }

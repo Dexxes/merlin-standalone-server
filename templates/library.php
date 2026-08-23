@@ -1,26 +1,26 @@
-<?php $title = 'Leseliste – Merlin'; $layout = 'library'; include __DIR__ . '/partials/header.php'; ?>
+<?php $title = $t->t('library.pageTitle'); $layout = 'library'; include __DIR__ . '/partials/header.php'; ?>
 
 <div class="lib-shell">
 
     <nav class="lib-nav">
-        <span class="lib-brand">MERLIN <span>Leseliste</span></span>
+        <span class="lib-brand">MERLIN <span><?= htmlspecialchars($t->t('library.brand'), ENT_QUOTES, 'UTF-8') ?></span></span>
         <div class="lib-search">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-            <input type="search" id="search" class="lib-input" placeholder="Suchen…" aria-label="Artikel suchen">
+            <input type="search" id="search" class="lib-input" placeholder="<?= htmlspecialchars($t->t('library.searchPlaceholder'), ENT_QUOTES, 'UTF-8') ?>" aria-label="<?= htmlspecialchars($t->t('library.searchAriaLabel'), ENT_QUOTES, 'UTF-8') ?>">
         </div>
         <button type="button" id="add-toggle" class="lib-btn lib-btn--primary" aria-expanded="false" aria-controls="add-article">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
-            Artikel hinzufügen
+            <?= htmlspecialchars($t->t('library.addArticle'), ENT_QUOTES, 'UTF-8') ?>
         </button>
-        <a href="<?= url('/account'); ?>">Mein Konto</a>
-        <?php if (!empty($isAdmin)): ?><a href="<?= url('/admin'); ?>">Admin</a><?php endif; ?>
-        <a href="<?= url('/logout'); ?>">Abmelden</a>
+        <a href="<?= url('/account'); ?>"><?= htmlspecialchars($t->t('library.navMyAccount'), ENT_QUOTES, 'UTF-8') ?></a>
+        <?php if (!empty($isAdmin)): ?><a href="<?= url('/admin'); ?>"><?= htmlspecialchars($t->t('library.navAdmin'), ENT_QUOTES, 'UTF-8') ?></a><?php endif; ?>
+        <a href="<?= url('/logout'); ?>"><?= htmlspecialchars($t->t('library.navLogout'), ENT_QUOTES, 'UTF-8') ?></a>
     </nav>
 
     <form id="add-article" class="lib-addrow">
-        <input type="url" id="add-url" class="lib-input" placeholder="Artikel-URL einfügen…" required>
-        <button type="submit" class="lib-btn lib-btn--primary">Hinzufügen</button>
-        <button type="button" id="add-cancel" class="lib-btn">Abbrechen</button>
+        <input type="url" id="add-url" class="lib-input" placeholder="<?= htmlspecialchars($t->t('library.urlPlaceholder'), ENT_QUOTES, 'UTF-8') ?>" required>
+        <button type="submit" class="lib-btn lib-btn--primary"><?= htmlspecialchars($t->t('library.addSubmit'), ENT_QUOTES, 'UTF-8') ?></button>
+        <button type="button" id="add-cancel" class="lib-btn"><?= htmlspecialchars($t->t('library.cancel'), ENT_QUOTES, 'UTF-8') ?></button>
         <p id="add-error" class="error" style="display:none;"></p>
     </form>
 
@@ -28,7 +28,7 @@
 
         <section id="continue-section" style="display:none;">
             <div class="lib-sechead">
-                <h2>Weiterlesen</h2>
+                <h2><?= htmlspecialchars($t->t('library.continueReading'), ENT_QUOTES, 'UTF-8') ?></h2>
                 <span class="lib-kicker" id="continue-count"></span>
                 <span class="lib-rule"></span>
             </div>
@@ -38,15 +38,15 @@
         <div class="lib-columns">
 
             <aside class="lib-side">
-                <span class="lib-kicker">Ansicht</span>
+                <span class="lib-kicker"><?= htmlspecialchars($t->t('library.viewLabel'), ENT_QUOTES, 'UTF-8') ?></span>
                 <div class="lib-facets" id="views">
-                    <a class="lib-facet" data-view="unread" href="?view=unread"><span>Ungelesen</span><span data-count="unread"></span></a>
-                    <a class="lib-facet" data-view="favorites" href="?view=favorites"><span>Favoriten</span><span data-count="favorites"></span></a>
-                    <a class="lib-facet" data-view="archive" href="?view=archive"><span>Archiv</span><span data-count="archived"></span></a>
-                    <a class="lib-facet" data-view="all" href="?view=all"><span>Alle</span><span data-count="total"></span></a>
+                    <a class="lib-facet" data-view="unread" href="?view=unread"><span><?= htmlspecialchars($t->t('library.viewUnread'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="unread"></span></a>
+                    <a class="lib-facet" data-view="favorites" href="?view=favorites"><span><?= htmlspecialchars($t->t('library.viewFavorites'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="favorites"></span></a>
+                    <a class="lib-facet" data-view="archive" href="?view=archive"><span><?= htmlspecialchars($t->t('library.viewArchive'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="archived"></span></a>
+                    <a class="lib-facet" data-view="all" href="?view=all"><span><?= htmlspecialchars($t->t('library.viewAll'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="total"></span></a>
                 </div>
 
-                <span class="lib-kicker">Tags</span>
+                <span class="lib-kicker"><?= htmlspecialchars($t->t('library.tagsLabel'), ENT_QUOTES, 'UTF-8') ?></span>
                 <div class="lib-tags" id="tags"></div>
             </aside>
 
@@ -54,15 +54,15 @@
                 <div class="lib-toolbar">
                     <span class="lib-spacer"></span>
                     <div class="lib-seg" id="sort">
-                        <label><input type="radio" name="sort" value="newest" checked>Neueste</label>
-                        <label><input type="radio" name="sort" value="shortest">Kürzeste</label>
-                        <label><input type="radio" name="sort" value="started">Angefangen</label>
+                        <label><input type="radio" name="sort" value="newest" checked><?= htmlspecialchars($t->t('library.sortNewest'), ENT_QUOTES, 'UTF-8') ?></label>
+                        <label><input type="radio" name="sort" value="shortest"><?= htmlspecialchars($t->t('library.sortShortest'), ENT_QUOTES, 'UTF-8') ?></label>
+                        <label><input type="radio" name="sort" value="started"><?= htmlspecialchars($t->t('library.sortStarted'), ENT_QUOTES, 'UTF-8') ?></label>
                     </div>
                 </div>
 
                 <ul id="article-list" class="lib-list"></ul>
-                <p id="empty-state" class="lib-empty" style="display:none;">Keine Artikel in dieser Ansicht.</p>
-                <div class="lib-more"><button id="load-more" type="button" class="lib-btn" style="display:none;">Mehr laden</button></div>
+                <p id="empty-state" class="lib-empty" style="display:none;"><?= htmlspecialchars($t->t('library.emptyState'), ENT_QUOTES, 'UTF-8') ?></p>
+                <div class="lib-more"><button id="load-more" type="button" class="lib-btn" style="display:none;"><?= htmlspecialchars($t->t('library.loadMore'), ENT_QUOTES, 'UTF-8') ?></button></div>
             </div>
         </div>
     </div>
@@ -76,6 +76,29 @@
 <template id="ico-trash"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></template>
 
 <script>
+const I18N = <?= json_encode($t->forJs([
+    'library.removeFavorite',
+    'library.addFavorite',
+    'library.restore',
+    'library.archive',
+    'library.delete',
+    'library.confirmDeleteArticle',
+    'library.minutesShort',
+    'library.remainingMinutes',
+    'library.lastRead',
+    'library.today',
+    'library.yesterday',
+    'library.processing',
+    'library.addedMinutesAgo',
+    'library.addedHoursAgo',
+    'library.addedOn',
+    'library.startedCount',
+    'library.addArticleFailed',
+]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+// Für Intl.*-Datumsformatierung (relativeDay) - unabhängig von der
+// gettext-artigen I18N-Textübersetzung, aber an dieselbe UI-Sprache gekoppelt.
+const dateLocale = document.documentElement.lang === 'en' ? 'en-US' : 'de-DE';
+
 const params = new URLSearchParams(location.search);
 let view = params.get('view') || 'unread';
 let tagId = params.get('tagId') ? Number(params.get('tagId')) : null;
@@ -176,19 +199,19 @@ function remainingLabel(article) {
     const parts = [];
     if (article.readingTime) {
         const left = Math.max(1, Math.round(article.readingTime * (1 - (article.scrollProgress || 0))));
-        parts.push('noch ca. ' + left + ' min');
+        parts.push(I18N['library.remainingMinutes'].replace('{minutes}', left));
     }
-    if (article.scrollUpdatedAt) parts.push('zuletzt ' + relativeDay(article.scrollUpdatedAt * 1000));
+    if (article.scrollUpdatedAt) parts.push(I18N['library.lastRead'].replace('{when}', relativeDay(article.scrollUpdatedAt * 1000)));
     return parts.join(' · ');
 }
 
 function relativeDay(ms) {
     const then = new Date(ms);
     const days = Math.floor((Date.now() - then.getTime()) / 86400000);
-    if (days <= 0) return 'heute';
-    if (days === 1) return 'gestern';
-    if (days < 7) return then.toLocaleDateString('de-DE', { weekday: 'short' });
-    return then.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+    if (days <= 0) return I18N['library.today'];
+    if (days === 1) return I18N['library.yesterday'];
+    if (days < 7) return then.toLocaleDateString(dateLocale, { weekday: 'short' });
+    return then.toLocaleDateString(dateLocale, { day: '2-digit', month: '2-digit' });
 }
 
 function addedLabel(article) {
@@ -196,9 +219,9 @@ function addedLabel(article) {
     const ms = Date.parse(article.createdAt.replace(' ', 'T') + 'Z');
     if (Number.isNaN(ms)) return '';
     const mins = Math.floor((Date.now() - ms) / 60000);
-    if (mins < 60) return 'vor ' + Math.max(1, mins) + ' Min. hinzugefügt';
-    if (mins < 1440) return 'vor ' + Math.floor(mins / 60) + ' Std. hinzugefügt';
-    return relativeDay(ms) + ' hinzugefügt';
+    if (mins < 60) return I18N['library.addedMinutesAgo'].replace('{minutes}', Math.max(1, mins));
+    if (mins < 1440) return I18N['library.addedHoursAgo'].replace('{hours}', Math.floor(mins / 60));
+    return I18N['library.addedOn'].replace('{when}', relativeDay(ms));
 }
 
 function buildActions(article, size) {
@@ -208,7 +231,7 @@ function buildActions(article, size) {
     const favBtn = document.createElement('button');
     favBtn.type = 'button';
     favBtn.className = 'lib-btn lib-btn--icon' + (size ? ' ' + size : '');
-    favBtn.title = article.isFavorite ? 'Favorit entfernen' : 'Als Favorit merken';
+    favBtn.title = article.isFavorite ? I18N['library.removeFavorite'] : I18N['library.addFavorite'];
     favBtn.setAttribute('aria-label', favBtn.title);
     const star = icon('star');
     if (article.isFavorite) { star.setAttribute('fill', 'currentColor'); }
@@ -223,7 +246,7 @@ function buildActions(article, size) {
     const archiveBtn = document.createElement('button');
     archiveBtn.type = 'button';
     archiveBtn.className = 'lib-btn lib-btn--icon' + (size ? ' ' + size : '');
-    archiveBtn.title = article.isArchived ? 'Wiederherstellen' : 'Archivieren';
+    archiveBtn.title = article.isArchived ? I18N['library.restore'] : I18N['library.archive'];
     archiveBtn.setAttribute('aria-label', archiveBtn.title);
     archiveBtn.appendChild(icon(article.isArchived ? 'restore' : 'archive'));
     archiveBtn.addEventListener('click', async (e) => {
@@ -236,12 +259,12 @@ function buildActions(article, size) {
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'lib-btn lib-btn--icon lib-btn--danger' + (size ? ' ' + size : '');
-    deleteBtn.title = 'Löschen';
-    deleteBtn.setAttribute('aria-label', 'Löschen');
+    deleteBtn.title = I18N['library.delete'];
+    deleteBtn.setAttribute('aria-label', I18N['library.delete']);
     deleteBtn.appendChild(icon('trash'));
     deleteBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (!confirm('Artikel wirklich löschen?')) return;
+        if (!confirm(I18N['library.confirmDeleteArticle'])) return;
         await fetch(basePath + '/api/articles/' + article.id, { method: 'DELETE', credentials: 'same-origin' });
         reloadAll();
     });
@@ -273,7 +296,7 @@ function buildStripCard(article) {
     source.className = 'lib-source';
     const sourceParts = [];
     if (article.siteName) sourceParts.push(article.siteName);
-    if (article.readingTime) sourceParts.push(article.readingTime + ' min');
+    if (article.readingTime) sourceParts.push(I18N['library.minutesShort'].replace('{minutes}', article.readingTime));
     source.textContent = sourceParts.join(' · ');
     text.appendChild(source);
 
@@ -315,14 +338,14 @@ function buildRow(article) {
     if (article.isProcessing) {
         const badge = document.createElement('span');
         badge.className = 'lib-processing';
-        badge.textContent = 'wird geladen…';
+        badge.textContent = I18N['library.processing'];
         titleWrap.appendChild(badge);
     }
     main.appendChild(titleWrap);
 
     const metaParts = [];
     if (article.siteName) metaParts.push(article.siteName);
-    if (article.readingTime) metaParts.push(article.readingTime + ' min');
+    if (article.readingTime) metaParts.push(I18N['library.minutesShort'].replace('{minutes}', article.readingTime));
     const added = addedLabel(article);
     if (added) metaParts.push(added);
     if (metaParts.length) {
@@ -431,7 +454,7 @@ async function loadContinue() {
         strip.appendChild(buildStripCard(article));
     }
     document.getElementById('continue-section').style.display = started.length ? 'block' : 'none';
-    document.getElementById('continue-count').textContent = started.length + ' angefangen';
+    document.getElementById('continue-count').textContent = I18N['library.startedCount'].replace('{count}', started.length);
 }
 
 async function loadCounts() {
@@ -539,7 +562,7 @@ addForm.addEventListener('submit', async (e) => {
     });
     if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        errorEl.textContent = data.error || 'Artikel konnte nicht hinzugefügt werden.';
+        errorEl.textContent = data.error || I18N['library.addArticleFailed'];
         errorEl.style.display = 'block';
         return;
     }

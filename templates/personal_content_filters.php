@@ -1,43 +1,61 @@
-<?php $title = 'Content-Filter – Merlin'; $layout = 'wide'; include __DIR__ . '/partials/header.php'; ?>
+<?php $title = $t->t('contentFilters.pageTitle'); $layout = 'wide'; include __DIR__ . '/partials/header.php'; ?>
 
-<h1>Content-Filter (persönlich)</h1>
-<p class="muted"><a href="<?= url('/account') ?>">Mein Konto</a> · <a href="<?= url('/library') ?>">Leseliste</a></p>
-<p class="muted">Eigene, private Regeln oben auf Bundle- und (falls vorhanden) instanzweiten Admin-Regeln je Domain. Diese Overrides sind nur für dein eigenes Konto wirksam.</p>
+<h1><?= htmlspecialchars($t->t('personalCf.heading'), ENT_QUOTES, 'UTF-8') ?></h1>
+<p class="muted"><a href="<?= url('/account') ?>"><?= htmlspecialchars($t->t('personalCf.navMyAccount'), ENT_QUOTES, 'UTF-8') ?></a> · <a href="<?= url('/library') ?>"><?= htmlspecialchars($t->t('personalCf.navLibrary'), ENT_QUOTES, 'UTF-8') ?></a></p>
+<p class="muted"><?= htmlspecialchars($t->t('personalCf.intro'), ENT_QUOTES, 'UTF-8') ?></p>
 
 <div id="cf-layout">
     <div id="cf-list">
         <table><tbody id="cf-list-body"></tbody></table>
         <div id="cf-new">
-            <input type="text" id="cf-new-domain" placeholder="z.B. example.com">
-            <button type="button" id="cf-new-btn">Bearbeiten</button>
+            <input type="text" id="cf-new-domain" placeholder="<?= htmlspecialchars($t->t('contentFilters.domainPlaceholder'), ENT_QUOTES, 'UTF-8') ?>">
+            <button type="button" id="cf-new-btn"><?= htmlspecialchars($t->t('contentFilters.editButton'), ENT_QUOTES, 'UTF-8') ?></button>
         </div>
     </div>
 
     <div id="cf-detail" style="display:none;">
         <h2 id="cf-detail-domain" style="font-size:1.1em;"></h2>
 
-        <label>Referenz (Bundle + instanzweite Admin-Regeln, read-only)</label>
+        <label><?= htmlspecialchars($t->t('personalCf.referenceLabel'), ENT_QUOTES, 'UTF-8') ?></label>
         <pre id="cf-reference">–</pre>
 
-        <label for="cf-own">Eigene Regeln (nur für dich, überschreibt/ergänzt die Referenz)</label>
+        <label for="cf-own"><?= htmlspecialchars($t->t('personalCf.ownRulesLabel'), ENT_QUOTES, 'UTF-8') ?></label>
         <textarea id="cf-own" spellcheck="false"></textarea>
         <p id="cf-errors" class="error" style="display:none;"></p>
 
         <div id="cf-actions">
-            <button type="button" id="cf-save">Speichern</button>
-            <button type="button" id="cf-delete">Löschen</button>
+            <button type="button" id="cf-save"><?= htmlspecialchars($t->t('contentFilters.save'), ENT_QUOTES, 'UTF-8') ?></button>
+            <button type="button" id="cf-delete"><?= htmlspecialchars($t->t('contentFilters.delete'), ENT_QUOTES, 'UTF-8') ?></button>
         </div>
 
-        <h3 style="font-size:1em;margin-top:1.5em;">Testlauf</h3>
+        <h3 style="font-size:1em;margin-top:1.5em;"><?= htmlspecialchars($t->t('contentFilters.testRunHeading'), ENT_QUOTES, 'UTF-8') ?></h3>
         <form id="cf-test-form" style="display:flex;gap:0.4em;">
             <input type="url" id="cf-test-url" placeholder="https://…" required style="flex:1;">
-            <button type="submit">Testen (ungespeicherter Stand)</button>
+            <button type="submit"><?= htmlspecialchars($t->t('contentFilters.testSubmit'), ENT_QUOTES, 'UTF-8') ?></button>
         </form>
         <div id="cf-test-result" style="margin-top:1em;"></div>
     </div>
 </div>
 
 <script>
+const I18N = <?= json_encode($t->forJs([
+    'contentFilters.badgeBundle',
+    'contentFilters.badgeAdmin',
+    'personalCf.badgeOwnOverride',
+    'personalCf.noReference',
+    'personalCf.confirmDeleteOwn',
+    'contentFilters.lineLabel',
+    'contentFilters.testError',
+    'contentFilters.noTitle',
+    'contentFilters.testSummary',
+    'contentFilters.colSection',
+    'contentFilters.colElement',
+    'contentFilters.colOrigin',
+    'contentFilters.colAttributes',
+    'contentFilters.colMatches',
+    'contentFilters.colError',
+]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+
 let domains = [];
 let currentDomain = null;
 
@@ -55,9 +73,9 @@ function renderList() {
         const tr = document.createElement('tr');
         tr.className = d.domain === currentDomain ? 'active' : '';
         const badges = [
-            d.hasBundle ? '<span class="badge">Bundle</span>' : '',
-            d.hasAdminCustom ? '<span class="badge">Admin</span>' : '',
-            d.hasOwnOverride ? '<span class="badge">Eigener Override</span>' : '',
+            d.hasBundle ? `<span class="badge">${I18N['contentFilters.badgeBundle']}</span>` : '',
+            d.hasAdminCustom ? `<span class="badge">${I18N['contentFilters.badgeAdmin']}</span>` : '',
+            d.hasOwnOverride ? `<span class="badge">${I18N['personalCf.badgeOwnOverride']}</span>` : '',
         ].join('');
         tr.innerHTML = `<td>${d.domain}${badges}</td>`;
         tr.addEventListener('click', () => selectDomain(d.domain));
@@ -77,13 +95,13 @@ async function selectDomain(domain) {
     document.getElementById('cf-errors').style.display = 'none';
 
     if (res.status === 404) {
-        document.getElementById('cf-reference').textContent = '(kein Bundle-/Admin-Filter für diese Domain)';
+        document.getElementById('cf-reference').textContent = I18N['personalCf.noReference'];
         document.getElementById('cf-own').value = `<domain name="${domain}">\n\n</domain>\n`;
         return;
     }
 
     const data = await res.json();
-    document.getElementById('cf-reference').textContent = data.reference || '(kein Bundle-/Admin-Filter für diese Domain)';
+    document.getElementById('cf-reference').textContent = data.reference || I18N['personalCf.noReference'];
     document.getElementById('cf-own').value = data.own || `<domain name="${domain}">\n\n</domain>\n`;
 }
 
@@ -105,7 +123,7 @@ document.getElementById('cf-save').addEventListener('click', async () => {
     const errEl = document.getElementById('cf-errors');
     if (!res.ok) {
         errEl.style.display = 'block';
-        errEl.textContent = (data.errors || []).map(e => (e.line ? `Zeile ${e.line}: ` : '') + e.message).join(' / ') || data.message;
+        errEl.textContent = (data.errors || []).map(e => (e.line ? `${I18N['contentFilters.lineLabel']} ${e.line}: ` : '') + e.message).join(' / ') || data.message;
         return;
     }
     errEl.style.display = 'none';
@@ -114,7 +132,7 @@ document.getElementById('cf-save').addEventListener('click', async () => {
 });
 
 document.getElementById('cf-delete').addEventListener('click', async () => {
-    if (!currentDomain || !confirm('Eigenen Override für "' + currentDomain + '" wirklich löschen?')) return;
+    if (!currentDomain || !confirm(I18N['personalCf.confirmDeleteOwn'].replace('{domain}', currentDomain))) return;
     await fetch(basePath + '/api/user/content-filters/' + encodeURIComponent(currentDomain), {
         method: 'DELETE',
         credentials: 'same-origin',
@@ -137,7 +155,7 @@ document.getElementById('cf-test-form').addEventListener('submit', async (e) => 
     const out = document.getElementById('cf-test-result');
 
     if (!res.ok) {
-        out.innerHTML = `<p class="error">${data.message || 'Fehler beim Testlauf'}</p>`;
+        out.innerHTML = `<p class="error">${data.message || I18N['contentFilters.testError']}</p>`;
         return;
     }
 
@@ -147,10 +165,14 @@ document.getElementById('cf-test-form').addEventListener('submit', async (e) => 
         <td>${t.matches}</td><td class="error">${t.error || ''}</td>
     </tr>`).join('');
 
+    const summary = I18N['contentFilters.testSummary']
+        .replace('{rules}', data.summary.rules)
+        .replace('{misses}', data.summary.misses)
+        .replace('{errors}', data.summary.errors);
+
     out.innerHTML = `
-        <p><strong>${data.result.title || '(kein Titel)'}</strong> – ${data.summary.rules} Regeln,
-        ${data.summary.misses} ohne Treffer, ${data.summary.errors} Fehler</p>
-        <table><thead><tr><th>Sektion</th><th>Element</th><th>Herkunft</th><th>Attribute</th><th>Treffer</th><th>Fehler</th></tr></thead>
+        <p><strong>${data.result.title || I18N['contentFilters.noTitle']}</strong> – ${summary}</p>
+        <table><thead><tr><th>${I18N['contentFilters.colSection']}</th><th>${I18N['contentFilters.colElement']}</th><th>${I18N['contentFilters.colOrigin']}</th><th>${I18N['contentFilters.colAttributes']}</th><th>${I18N['contentFilters.colMatches']}</th><th>${I18N['contentFilters.colError']}</th></tr></thead>
         <tbody>${rows}</tbody></table>
     `;
 });
