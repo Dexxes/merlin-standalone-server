@@ -87,9 +87,14 @@ require_once __DIR__ . '/partials/icons.php';
     <p id="a-excerpt" class="article-excerpt" style="display:none;"></p>
     <div id="a-meta" class="article-meta"></div>
     <div id="a-tags" class="article-tags"></div>
+    <div id="video-player" style="display:none;">
+        <video id="video-player-el" controls playsinline></video>
+    </div>
     <div id="article-body"></div>
 </article>
 
+<!-- Lokal vendored (kein Laufzeit-CDN), siehe public/js/vendor/README.md -->
+<script src="<?= url('/js/vendor/hls.min.js') ?>"></script>
 <script>
 const I18N = <?= json_encode($t->forJs([
     'articleReader.removeHighlight',
@@ -559,6 +564,69 @@ function applyFontSize() {
 // Zitat-Fallback stehen. Jedes gefundene <script> wird deshalb durch eine
 // neu erzeugte Kopie ersetzt; nur DAS bringt den Browser dazu, es
 // auszuführen.
+// Native ARD-/ZDF-/Arte-Wiedergabe über deren interne Stream-APIs, siehe
+// VideoStreamResolverService-Docblock (Backend) für den Hintergrund - das
+// ist bewusst kein offizieller Embed-Weg. Bleibt bei jedem Fehlschlag
+// (nicht auflösbar, Netzwerkfehler, Wiedergabefehler) einfach versteckt;
+// der Artikeltext darunter ist davon nie betroffen.
+const NATIVE_VIDEO_HOSTS = ['ardmediathek.de', 'zdf.de', 'arte.tv'];
+let activeHls = null;
+
+function hasNativeVideoHost(articleUrl) {
+    let host;
+    try {
+        host = new URL(articleUrl).hostname.toLowerCase();
+    } catch {
+        return false;
+    }
+    return NATIVE_VIDEO_HOSTS.some(domain => host === domain || host.endsWith('.' + domain));
+}
+
+function teardownVideoPlayer() {
+    if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+    }
+    document.getElementById('video-player').style.display = 'none';
+}
+
+async function setupVideoPlayer(articleId, articleUrl) {
+    teardownVideoPlayer();
+    if (!hasNativeVideoHost(articleUrl)) return;
+
+    let data;
+    try {
+        const res = await fetch(basePath + '/api/articles/' + articleId + '/video-stream', { credentials: 'same-origin' });
+        data = await res.json();
+    } catch {
+        return;
+    }
+    if (!data?.available || data.type !== 'hls' || typeof data.url !== 'string') return;
+
+    const video = document.getElementById('video-player-el');
+    document.getElementById('video-player').style.display = 'block';
+
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = data.url;
+        return;
+    }
+
+    if (typeof Hls === 'undefined' || !Hls.isSupported()) {
+        teardownVideoPlayer();
+        return;
+    }
+
+    const hls = new Hls();
+    activeHls = hls;
+    hls.on(Hls.Events.ERROR, (event, errData) => {
+        if (errData.fatal) teardownVideoPlayer();
+    });
+    hls.loadSource(data.url);
+    hls.attachMedia(video);
+
+    video.addEventListener('error', teardownVideoPlayer, { once: true });
+}
+
 function executeEmbedScripts() {
     document.getElementById('article-body').querySelectorAll('script').forEach(oldScript => {
         const newScript = document.createElement('script');
@@ -633,6 +701,7 @@ function renderArticle() {
     // v-html in merlin-nextclouds ArticleReader.vue.
     document.getElementById('article-body').innerHTML = article.content || '';
     executeEmbedScripts();
+    setupVideoPlayer(articleId, article.url);
     applyFontSize();
 
     document.getElementById('reader-status').style.display = 'none';

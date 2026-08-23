@@ -31,6 +31,7 @@ use Merlin\Service\ContentFilterValidator;
 use Merlin\Service\ExportService;
 use Merlin\Service\SiteCredentialService;
 use Merlin\Service\TtsStreamService;
+use Merlin\Service\VideoStreamResolverService;
 use PDO;
 use Psr\Log\LoggerInterface;
 
@@ -60,6 +61,7 @@ final class App {
     private ?PasswordResetService $passwordResetService = null;
     private ?SessionService $sessions = null;
     private ?ContentExtractorService $contentExtractor = null;
+    private ?VideoStreamResolverService $videoStreamResolver = null;
     private ?ExportService $exportService = null;
     private ?ContentFilterMerger $contentFilterMerger = null;
     private ?ContentFilterRepository $contentFilterRepository = null;
@@ -193,6 +195,10 @@ final class App {
             $this->contentFilterRepository(),
             $this->siteCredentialService(),
         );
+    }
+
+    public function videoStreamResolver(): VideoStreamResolverService {
+        return $this->videoStreamResolver ??= new VideoStreamResolverService($this->logger());
     }
 
     public function credentialCipher(): CredentialCipher {
