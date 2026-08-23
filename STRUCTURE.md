@@ -53,7 +53,10 @@ merlin-server/
 │   │   ├── ContentFilterSchema.php         # Port aus merlin-nextcloud, unverändert
 │   │   ├── ContentFilterValidator.php      # Port aus merlin-nextcloud, unverändert (Prüfung vor dem Speichern)
 │   │   ├── ContentFilterTrace.php          # Port aus merlin-nextcloud, unverändert (Trefferzähler für den Testlauf)
-│   │   └── TtsStreamService.php            # Port aus merlin-nextcloud: HTML→Plaintext→Piper-Daemon-Proxy, geteilt von TtsController + PublicShareController
+│   │   ├── TtsStreamService.php            # Port aus merlin-nextcloud: HTML→Plaintext→Piper-Daemon-Proxy, geteilt von TtsController + PublicShareController
+│   │   └── Login/                          # 🔜 geplant: Paywall-Abo-Login, Port aus merlin-nextcloud (siehe PLATFORMS.md)
+│   │       ├── LoginProviderInterface.php     # login(username, password): Cookie-Bundle
+│   │       └── PianoJsonFormLoginProvider.php # type="piano-json-form" (z. B. tagesspiegel.de)
 │   ├── Db/
 │   │   ├── Database.php            # PDO-SQLite-Singleton, PRAGMA foreign_keys=ON
 │   │   ├── UserRepository.php
@@ -66,7 +69,8 @@ merlin-server/
 │   │   ├── HighlightRepository.php # PDO-Port von HighlightMapper
 │   │   ├── ArticleShareRepository.php # PDO-Port von ArticleShareMapper (Public-Share-Links)
 │   │   ├── ContentFilterRepository.php # PDO-Port von merlin-nextclouds ContentFilterRepository: Bundle (Datei) + Admin-/User-Custom (DB, Tabelle content_filters), implementiert Service\DomainConfigProvider
-│   │   └── LoginFlowRepository.php # Login-Flow-v2-Klon: flow_token/poll_token, TTL 10 Min, Single-Use
+│   │   ├── LoginFlowRepository.php # Login-Flow-v2-Klon: flow_token/poll_token, TTL 10 Min, Single-Use
+│   │   └── SiteCredentialRepository.php # 🔜 geplant: PDO-Port von merlin-nextclouds SiteCredentialMapper, verschlüsselte Paywall-Zugangsdaten je Nutzer/Domain
 │   └── Migration/
 │       ├── MigrationRunner.php     # führt migrations/*.sql aus, trackt schema_migrations
 │       └── migrations/001_initial.sql, 002_login_flow.sql, 003_share_and_settings.sql, 004_content_filters.sql
@@ -204,6 +208,20 @@ merlin-server/
   /api/articles/{id}/export/html`, `Content-Disposition: attachment` über die
   neue `Response::download()`-Hilfsmethode). Verlinkt aus
   `article_reader.php` neben Vorlesen/Teilen.
+- **Paywall-Abo-Login (🔜 geplant)**: Wie in merlin-nextcloud bekommt die content-filter-XML
+  eine neue optionale `<login type="..." page="...">`-Sektion pro Domain (z. B. Tagesspiegel:
+  `page="https://mein.tagesspiegel.de/customer/login"`), die auf eine `Service\Login\*LoginProvider`-
+  Implementierung verweist (z. B. `PianoJsonFormLoginProvider` für `type="piano-json-form"`).
+  Nutzername/Passwort landen verschlüsselt in einer neuen Tabelle (Migration
+  `005_site_credentials.sql`), verwaltet über `Db\SiteCredentialRepository` - mangels `ICrypto`
+  übernimmt eine neue `Auth\CredentialCipher`-Klasse (`sodium_crypto_secretbox`, Schlüssel aus
+  `config.php`) die Verschlüsselung. Der gewonnene Session-Cookie (bei Tagesspiegel ca. 365 Tage
+  gültig) wird wie die bestehenden statischen `<fetch>`-Header aus den Bundle-XMLs in
+  `ContentExtractorService` injiziert. Wie auf der Nextcloud-Seite gilt: Erkennt der Extractor beim
+  erstmaligen Speichern eines Paywall-Artikels fehlende/ungültige Zugangsdaten, muss
+  `ArticleController` eine eindeutige "Login erforderlich"-Antwort liefern statt eines stillen
+  Fehlschlags - Grundlage für einen Login-Dialog in allen Clients (`PLATFORMS.md`, Client-seitige
+  Umsetzung ist ein eigener Folgeschritt, betrifft auch diesen Backend-Typ gleichermaßen).
 - **Bewusst nicht nachgebaut** (kein Client braucht sie - siehe Analyse in der
   Konversation, die diese Erweiterung angelegt hat): **SSE** (`/api/events`,
   in merlin-nextcloud selbst nirgends von einem Client aufgerufen - Android
