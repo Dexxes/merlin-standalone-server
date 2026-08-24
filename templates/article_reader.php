@@ -89,6 +89,7 @@ require_once __DIR__ . '/partials/icons.php';
     <div id="a-tags" class="article-tags"></div>
     <div id="video-player" style="display:none;">
         <video id="video-player-el" controls playsinline></video>
+        <select id="video-player-variant" class="video-player-variant" style="display:none;"></select>
     </div>
     <div id="article-body"></div>
 </article>
@@ -571,6 +572,7 @@ function applyFontSize() {
 // der Artikeltext darunter ist davon nie betroffen.
 const NATIVE_VIDEO_HOSTS = ['ardmediathek.de', 'zdf.de', 'arte.tv'];
 let activeHls = null;
+let currentVariants = [];
 
 function hasNativeVideoHost(articleUrl) {
     let host;
@@ -625,29 +627,46 @@ function teardownVideoPlayer() {
         activeHls = null;
     }
     document.getElementById('video-player').style.display = 'none';
+    document.getElementById('video-player-variant').style.display = 'none';
+    currentVariants = [];
     setFallbackLinkVisible(true);
 }
 
-async function setupVideoPlayer(articleId, articleUrl) {
-    teardownVideoPlayer();
-    if (!hasNativeVideoHost(articleUrl)) return;
-
-    let data;
-    try {
-        const res = await fetch(basePath + '/api/articles/' + articleId + '/video-stream', { credentials: 'same-origin' });
-        data = await res.json();
-    } catch {
+// Baut die Dropdown-Optionen aus den vom Backend gelieferten Varianten (z. B.
+// Standard vs. Gebärdensprache/Audiodeskription bei ARD/ZDF) - nur sichtbar,
+// wenn es tatsächlich mehr als eine gibt, sonst wäre die Auswahl bedeutungslos.
+function populateVideoVariantSelect(variants, selectedIndex) {
+    const select = document.getElementById('video-player-variant');
+    select.innerHTML = '';
+    if (variants.length <= 1) {
+        select.style.display = 'none';
         return;
     }
-    if (!data?.available || data.type !== 'hls' || typeof data.url !== 'string') return;
+    variants.forEach((variant, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = variant.label;
+        select.appendChild(option);
+    });
+    select.value = String(selectedIndex);
+    select.style.display = 'block';
+}
 
-    positionVideoPlayer();
+function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
     const video = document.getElementById('video-player-el');
-    document.getElementById('video-player').style.display = 'block';
-    setFallbackLinkVisible(false);
 
+    const seekAndPlay = () => {
+        if (resumeAt > 0) video.currentTime = resumeAt;
+        if (autoplay) video.play().catch(() => {});
+    };
+
+    // Safari unterstützt HLS nativ über <video src>, alle anderen gängigen
+    // Browser brauchen hls.js (MediaSource-basiert).
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = data.url;
+        video.src = streamUrl;
+        if (resumeAt > 0 || autoplay) {
+            video.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+        }
         return;
     }
 
@@ -661,10 +680,59 @@ async function setupVideoPlayer(articleId, articleUrl) {
     hls.on(Hls.Events.ERROR, (event, errData) => {
         if (errData.fatal) teardownVideoPlayer();
     });
-    hls.loadSource(data.url);
+    if (resumeAt > 0 || autoplay) {
+        hls.on(Hls.Events.MANIFEST_PARSED, seekAndPlay);
+    }
+    hls.loadSource(streamUrl);
     hls.attachMedia(video);
 
     video.addEventListener('error', teardownVideoPlayer, { once: true });
+}
+
+function selectVideoVariant(index) {
+    const variant = currentVariants[index];
+    if (!variant) return;
+
+    // Abspielposition beim Varianten-Wechsel beibehalten (z. B. von
+    // Gebärdensprache auf Normal mitten im Video umschalten), statt wieder
+    // bei 0 zu beginnen.
+    const video = document.getElementById('video-player-el');
+    const resumeAt = video.currentTime || 0;
+    const wasPlaying = !video.paused;
+
+    if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+    }
+    attachVideoStream(variant.url, { resumeAt, autoplay: wasPlaying });
+}
+
+document.getElementById('video-player-variant').addEventListener('change', event => {
+    selectVideoVariant(Number(event.target.value));
+});
+
+async function setupVideoPlayer(articleId, articleUrl) {
+    teardownVideoPlayer();
+    if (!hasNativeVideoHost(articleUrl)) return;
+
+    let data;
+    try {
+        const res = await fetch(basePath + '/api/articles/' + articleId + '/video-stream', { credentials: 'same-origin' });
+        data = await res.json();
+    } catch {
+        return;
+    }
+    if (!data?.available || data.type !== 'hls' || !Array.isArray(data.variants) || data.variants.length === 0) return;
+
+    currentVariants = data.variants;
+    const selectedIndex = Number.isInteger(data.defaultIndex) && data.variants[data.defaultIndex] ? data.defaultIndex : 0;
+
+    positionVideoPlayer();
+    document.getElementById('video-player').style.display = 'block';
+    setFallbackLinkVisible(false);
+    populateVideoVariantSelect(currentVariants, selectedIndex);
+
+    attachVideoStream(currentVariants[selectedIndex].url);
 }
 
 function executeEmbedScripts() {

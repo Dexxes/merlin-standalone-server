@@ -652,6 +652,7 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
    unabhängig vom umgebenden Layout. */
 #video-player { max-width: 720px; margin: 0 auto 1.3em; }
 #video-player-el { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border-radius: var(--radius-sm); background: #000; }
+.video-player-variant { display: block; margin: 0.5em auto 0; padding: 4px 8px; font-size: 0.85em; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text); }
 #article-body blockquote { border-left: 3px solid var(--accent); padding-left: 1.1em; color: var(--text-muted); margin: 1.3em 0; }
 #article-body figcaption { font-size: 0.85em; color: var(--text-muted); font-style: italic; }
 

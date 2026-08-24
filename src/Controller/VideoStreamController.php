@@ -35,9 +35,10 @@ final class VideoStreamController {
         }
 
         return Response::json([
-            'available' => true,
-            'type'      => $resolved['type'],
-            'url'       => $resolved['url'],
+            'available'    => true,
+            'type'         => $resolved['type'],
+            'variants'     => $resolved['variants'],
+            'defaultIndex' => $resolved['defaultIndex'],
         ]);
     }
 }

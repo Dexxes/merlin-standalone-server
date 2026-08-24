@@ -36,13 +36,25 @@ class VideoStreamResolverService {
 
 	private const HTTP_TIMEOUT_SECONDS = 8;
 
+	/**
+	 * Substrings (kleingeschrieben), die eine Variante als "nicht der
+	 * Standard" markieren - z. B. Gebärdensprache oder Audiodeskription.
+	 * Solche Varianten sind für Sehende/Hörende meist unpraktisch als
+	 * Voreinstellung (eingeblendete/r Dolmetscher:in, zusätzliche
+	 * Beschreibungs-Tonspur), bleiben aber über das Dropdown wählbar.
+	 */
+	private const SPECIAL_VARIANT_KEYWORDS = [
+		'dgs', 'gebärden', 'gebarden', 'sign',
+		'audiodeskription', 'hörfilm', 'horfilm', 'audio description',
+	];
+
 	public function __construct(
 		private LoggerInterface $logger,
 	) {
 	}
 
 	/**
-	 * @return array{type: 'hls', url: string}|null
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
 	 */
 	public function resolve(string $articleUrl): ?array {
 		$host = strtolower((string) parse_url($articleUrl, PHP_URL_HOST));
@@ -113,6 +125,11 @@ class VideoStreamResolverService {
 			return null;
 		}
 
+		// Ein Stream-Eintrag pro verfügbarer Variante (kind/kindName, z. B.
+		// "main"/"Normal" vs. "signLanguage"/"Gebärdensprache") - alle
+		// sammeln statt nur die erste zu nehmen, damit das Frontend sie zur
+		// Auswahl anbieten kann (siehe buildVariantResult()).
+		$variants = [];
 		foreach ($widgets as $widget) {
 			if (!is_array($widget)) {
 				continue;
@@ -126,20 +143,28 @@ class VideoStreamResolverService {
 				continue;
 			}
 			foreach ($streams as $stream) {
+				if (!is_array($stream)) {
+					continue;
+				}
 				$mediaList = $stream['media'] ?? null;
 				if (!is_array($mediaList)) {
 					continue;
 				}
+				$label = $this->firstNonEmptyString([$stream['kindName'] ?? null, $stream['kind'] ?? null]) ?? 'Standard';
 				foreach ($mediaList as $media) {
 					$url = $media['url'] ?? null;
 					if (is_string($url) && $this->looksLikeHlsUrl($url)) {
-						return $this->validated($url);
+						// Nur die erste m3u8 pro Stream-Gruppe - die mp4-
+						// Fallback-Auflösungen derselben Gruppe sind keine
+						// eigenständige Variante, sondern dieselbe Quelle.
+						$variants[] = ['label' => $label, 'url' => $url];
+						break;
 					}
 				}
 			}
 		}
 
-		return null;
+		return $this->buildVariantResult($variants);
 	}
 
 	// ──────────────────────────────────────────────────────────────────────
@@ -178,6 +203,10 @@ class VideoStreamResolverService {
 		}
 		$authHeader = trim($tokenType . ' ' . $tokenValue);
 
+		// label/vodMediaType (z. B. "Normal"/"DEFAULT" vs. "DGS"/"DGS" für
+		// Deutsche Gebärdensprache) leben nur auf VodMedia - LiveMedia hat
+		// diese Felder nicht, deshalb der Inline-Fragment statt sie direkt
+		// auf dem Interface abzufragen.
 		$graphqlQuery = <<<'GRAPHQL'
 			query VideoByCanonical($canonical: String!) {
 				videoByCanonical(canonical: $canonical) {
@@ -185,6 +214,10 @@ class VideoStreamResolverService {
 					currentMedia {
 						nodes {
 							ptmdTemplate
+							... on VodMedia {
+								label
+								vodMediaType
+							}
 						}
 					}
 				}
@@ -204,28 +237,56 @@ class VideoStreamResolverService {
 			return null;
 		}
 
-		$ptmdTemplate = $this->findFirstStringValue($graphqlResponse, 'ptmdTemplate');
-		if ($ptmdTemplate === null) {
+		// currentMedia.nodes enthält typischerweise 1-3 Einträge - eine
+		// Standardvariante ("DEFAULT") und optional weitere wie "DGS"
+		// (Gebärdensprache) oder eine Hörfilm-/Audiodeskriptionsfassung.
+		// Für jede wird separat die PTMD abgefragt, damit alle als Variante
+		// im Frontend-Dropdown zur Auswahl stehen (siehe buildVariantResult()).
+		$nodes = $graphqlResponse['data']['videoByCanonical']['currentMedia']['nodes'] ?? null;
+		if (!is_array($nodes)) {
 			return null;
 		}
 
-		// Nur ein Pfad-Präfix mit erwartetem Schema erlauben, bevor die feste
-		// api.zdf.de-Basis vorangestellt wird - verhindert, dass eine
-		// unerwartete absolute URL im Template (z. B. durch eine künftige
-		// API-Änderung) versehentlich auf einen fremden Host zeigen könnte.
-		if (!str_starts_with($ptmdTemplate, '/')) {
-			return null;
-		}
-		$ptmdUrl = 'https://api.zdf.de' . str_replace('{playerId}', 'android_native_6', $ptmdTemplate);
-		if (!$this->looksLikeAllowedApiHost($ptmdUrl, ['api.zdf.de'])) {
-			return null;
+		$variants = [];
+		foreach ($nodes as $node) {
+			if (!is_array($node)) {
+				continue;
+			}
+			$ptmdTemplate = $node['ptmdTemplate'] ?? null;
+			// Nur ein Pfad-Präfix mit erwartetem Schema erlauben, bevor die
+			// feste api.zdf.de-Basis vorangestellt wird - verhindert, dass
+			// eine unerwartete absolute URL im Template (z. B. durch eine
+			// künftige API-Änderung) versehentlich auf einen fremden Host
+			// zeigen könnte.
+			if (!is_string($ptmdTemplate) || !str_starts_with($ptmdTemplate, '/')) {
+				continue;
+			}
+			$ptmdUrl = 'https://api.zdf.de' . str_replace('{playerId}', 'android_native_6', $ptmdTemplate);
+			if (!$this->looksLikeAllowedApiHost($ptmdUrl, ['api.zdf.de'])) {
+				continue;
+			}
+
+			$ptmd = $this->httpGetJson($ptmdUrl, ['Api-Auth: ' . $authHeader]);
+			if ($ptmd === null) {
+				continue;
+			}
+			$url = $this->findFirstHlsUrlInZdfPtmd($ptmd);
+			if ($url === null) {
+				continue;
+			}
+
+			$label = $this->firstNonEmptyString([$node['label'] ?? null, $node['vodMediaType'] ?? null]) ?? 'Standard';
+			$variants[] = ['label' => $label, 'url' => $url];
 		}
 
-		$ptmd = $this->httpGetJson($ptmdUrl, ['Api-Auth: ' . $authHeader]);
-		if ($ptmd === null) {
-			return null;
-		}
+		return $this->buildVariantResult($variants);
+	}
 
+	/**
+	 * Durchsucht eine ZDF-PTMD-Antwort nach der ersten m3u8-URL
+	 * (priorityList[].formitaeten[].qualities[].audio.tracks[].uri).
+	 */
+	private function findFirstHlsUrlInZdfPtmd(array $ptmd): ?string {
 		$priorityList = $ptmd['priorityList'] ?? null;
 		if (!is_array($priorityList)) {
 			return null;
@@ -248,13 +309,12 @@ class VideoStreamResolverService {
 					foreach ($tracks as $track) {
 						$uri = $track['uri'] ?? null;
 						if (is_string($uri) && $this->looksLikeHlsUrl($uri)) {
-							return $this->validated($uri);
+							return $uri;
 						}
 					}
 				}
 			}
 		}
-
 		return null;
 	}
 
@@ -280,32 +340,6 @@ class VideoStreamResolverService {
 			return $m[1];
 		}
 
-		return null;
-	}
-
-	/**
-	 * Sucht rekursiv den ersten String-Wert unter dem Schlüssel $key –
-	 * bewusst strukturunabhängig statt an einen genauen GraphQL-Response-Pfad
-	 * gebunden, weil dessen exakte Verschachtelung unsicher recherchiert ist
-	 * (siehe Klassen-Docblock). Robuster gegen kleinere Schema-Abweichungen
-	 * als ein starrer Pfad, ohne die Fail-closed-Eigenschaft aufzugeben: kein
-	 * Treffer bleibt einfach null.
-	 */
-	private function findFirstStringValue(mixed $data, string $key): ?string {
-		if (!is_array($data)) {
-			return null;
-		}
-		foreach ($data as $k => $v) {
-			if ($k === $key && is_string($v) && $v !== '') {
-				return $v;
-			}
-			if (is_array($v)) {
-				$found = $this->findFirstStringValue($v, $key);
-				if ($found !== null) {
-					return $found;
-				}
-			}
-		}
 		return null;
 	}
 
@@ -340,15 +374,30 @@ class VideoStreamResolverService {
 			return null;
 		}
 
+		// Mehrere Sprach-/Untertitel-Fassungen (z. B. "VOSTF", "VF") sind bei
+		// Arte üblich - alle HLS-Einträge sammeln statt nur den ersten, siehe
+		// buildVariantResult(). Die genauen Label-Feldnamen sind aus der
+		// Recherche nicht live verifiziert, deshalb mehrere Kandidaten
+		// probieren und sonst nummeriert benennen statt zu verwerfen.
+		$variants = [];
 		foreach ($streams as $stream) {
+			if (!is_array($stream)) {
+				continue;
+			}
 			$protocol = strtoupper((string) ($stream['protocol'] ?? ''));
 			$url = $stream['url'] ?? null;
-			if (str_starts_with($protocol, 'HLS') && is_string($url) && $this->looksLikeHlsUrl($url)) {
-				return $this->validated($url);
+			if (!str_starts_with($protocol, 'HLS') || !is_string($url) || !$this->looksLikeHlsUrl($url)) {
+				continue;
 			}
+			$label = $this->firstNonEmptyString([
+				$stream['versionShortLibelle'] ?? null,
+				$stream['versionLibelle'] ?? null,
+				$stream['audioLanguage'] ?? null,
+			]) ?? ('Version ' . (count($variants) + 1));
+			$variants[] = ['label' => $label, 'url' => $url];
 		}
 
-		return null;
+		return $this->buildVariantResult($variants);
 	}
 
 	// ──────────────────────────────────────────────────────────────────────
@@ -375,14 +424,68 @@ class VideoStreamResolverService {
 	}
 
 	/**
-	 * @return array{type: 'hls', url: string}|null
+	 * Erster nicht-leerer String aus einer Liste von Kandidatenwerten
+	 * (bereits getrimmt) - für "nimm das erste vorhandene Label-Feld".
+	 *
+	 * @param list<mixed> $candidates
 	 */
-	private function validated(string $url): ?array {
-		$parts = parse_url($url);
-		if ($parts === false || !isset($parts['scheme'], $parts['host']) || strtolower($parts['scheme']) !== 'https') {
+	private function firstNonEmptyString(array $candidates): ?string {
+		foreach ($candidates as $candidate) {
+			if (is_string($candidate) && trim($candidate) !== '') {
+				return trim($candidate);
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * true, wenn $label auf eine Variante hindeutet, die als Voreinstellung
+	 * unpraktisch wäre (Gebärdensprache, Audiodeskription, …) - siehe
+	 * SPECIAL_VARIANT_KEYWORDS.
+	 */
+	private function isSpecialVariant(string $label): bool {
+		$lower = mb_strtolower($label);
+		foreach (self::SPECIAL_VARIANT_KEYWORDS as $keyword) {
+			if (str_contains($lower, $keyword)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Baut aus den pro Sender gesammelten Kandidaten die finale
+	 * resolve()-Antwort: dedupliziert nach URL (erste Nennung gewinnt) und
+	 * wählt als defaultIndex die erste NICHT-spezielle Variante, damit
+	 * Gebärdensprache/Audiodeskription nie stillschweigend die Vorauswahl
+	 * ist - bleibt aber im Dropdown wählbar.
+	 *
+	 * @param list<array{label: string, url: string}> $variants
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
+	 */
+	private function buildVariantResult(array $variants): ?array {
+		$seenUrls = [];
+		$deduped = [];
+		foreach ($variants as $variant) {
+			if (isset($seenUrls[$variant['url']])) {
+				continue;
+			}
+			$seenUrls[$variant['url']] = true;
+			$deduped[] = $variant;
+		}
+		if ($deduped === []) {
 			return null;
 		}
-		return ['type' => 'hls', 'url' => $url];
+
+		$defaultIndex = 0;
+		foreach ($deduped as $i => $variant) {
+			if (!$this->isSpecialVariant($variant['label'])) {
+				$defaultIndex = $i;
+				break;
+			}
+		}
+
+		return ['type' => 'hls', 'variants' => $deduped, 'defaultIndex' => $defaultIndex];
 	}
 
 	/**
