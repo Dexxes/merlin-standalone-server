@@ -153,9 +153,16 @@ class VideoStreamResolverService {
 	 * Datei-/DB-Cache für ein einzelnes zusätzliches, kurzes HTTP-Roundtrip
 	 * wäre mehr Komplexität als der Aufruf selbst kostet.
 	 *
-	 * Am unsichersten von den drei Sendern recherchiert (ZDFs GraphQL-Schema
-	 * war aus der Analyse nicht 1:1 rekonstruierbar) – deshalb besonders
-	 * defensiv: jede Abweichung von der erwarteten Struktur → null.
+	 * War beim ersten Implementieren die unsicherste Rekonstruktion der drei
+	 * Sender - inzwischen anhand des öffentlichen ZDF-Extractors in yt-dlp
+	 * (yt_dlp/extractor/zdf.py) verifiziert: Root-Feld ist videoByCanonical()
+	 * mit Variable $canonical (nicht smartCollectionByCanonical/$id, wie
+	 * ursprünglich geraten), ptmdTemplate hängt direkt unter
+	 * currentMedia.nodes (nicht unter einem zusätzlichen streams-Feld), und
+	 * der Wert ist ein SERVER-RELATIVER Pfad ("/tmd/2/{playerId}/...") - erst
+	 * nach dem Voranstellen von "https://api.zdf.de" ist er eine gültige URL.
+	 * Trotzdem weiterhin defensiv: jede Abweichung von der erwarteten
+	 * Struktur → null statt Exception.
 	 */
 	private function resolveZdf(string $articleUrl): ?array {
 		$id = $this->extractZdfId($articleUrl);
@@ -172,21 +179,12 @@ class VideoStreamResolverService {
 		$authHeader = trim($tokenType . ' ' . $tokenValue);
 
 		$graphqlQuery = <<<'GRAPHQL'
-			query VideoByCanonical($id: String!) {
-				smartCollectionByCanonical(canonical: $id) {
-					mainVideoContent {
+			query VideoByCanonical($canonical: String!) {
+				videoByCanonical(canonical: $canonical) {
+					canonical
+					currentMedia {
 						nodes {
-							... on Video {
-								currentMedia {
-									nodes {
-										... on Video {
-											streams {
-												ptmdTemplate
-											}
-										}
-									}
-								}
-							}
+							ptmdTemplate
 						}
 					}
 				}
@@ -195,7 +193,11 @@ class VideoStreamResolverService {
 
 		$graphqlResponse = $this->httpPostJson(
 			'https://api.zdf.de/graphql',
-			['query' => $graphqlQuery, 'variables' => ['id' => $id]],
+			[
+				'operationName' => 'VideoByCanonical',
+				'query'         => $graphqlQuery,
+				'variables'     => ['canonical' => $id],
+			],
 			['Api-Auth: ' . $authHeader],
 		);
 		if ($graphqlResponse === null) {
@@ -207,7 +209,14 @@ class VideoStreamResolverService {
 			return null;
 		}
 
-		$ptmdUrl = str_replace('{playerId}', 'android_native_6', $ptmdTemplate);
+		// Nur ein Pfad-Präfix mit erwartetem Schema erlauben, bevor die feste
+		// api.zdf.de-Basis vorangestellt wird - verhindert, dass eine
+		// unerwartete absolute URL im Template (z. B. durch eine künftige
+		// API-Änderung) versehentlich auf einen fremden Host zeigen könnte.
+		if (!str_starts_with($ptmdTemplate, '/')) {
+			return null;
+		}
+		$ptmdUrl = 'https://api.zdf.de' . str_replace('{playerId}', 'android_native_6', $ptmdTemplate);
 		if (!$this->looksLikeAllowedApiHost($ptmdUrl, ['api.zdf.de'])) {
 			return null;
 		}
@@ -259,6 +268,18 @@ class VideoStreamResolverService {
 			&& preg_match('/^[A-Za-z0-9_-]{3,120}$/', $m[1]) === 1) {
 			return $m[1];
 		}
+
+		// Sammelseiten wie "/kurzfassungen/<slug>-100" referenzieren das
+		// tatsächlich gemeinte Video nicht über den Pfad, sondern über einen
+		// URL-Fragment-Anker "#focus=<video-slug>-100" (per Klick auf einen
+		// einzelnen Clip innerhalb der Seite gesetzt). Fragmente werden vom
+		// Browser nie an den Server geschickt, stehen aber in der beim
+		// Speichern erfassten article.url, also hier zusätzlich auswerten.
+		$fragment = (string) parse_url($articleUrl, PHP_URL_FRAGMENT);
+		if (preg_match('/^focus=([A-Za-z0-9_-]{3,120})$/', $fragment, $m) === 1) {
+			return $m[1];
+		}
+
 		return null;
 	}
 
