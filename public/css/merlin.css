@@ -643,6 +643,15 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
 .tag-chip { padding: 0.15em 0.65em; border-radius: 999px; font-size: 0.75em; font-weight: 600; }
 
 #article-body img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
+
+/* Native ARD-/ZDF-/Arte-Wiedergabe (siehe VideoStreamResolverService). Feste
+   Obergrenze statt voller Spaltenbreite: ohne max-width würde <video> beim
+   Laden der echten (teils sehr großen) Videoauflösung unzentriert und
+   überdimensioniert wirken - echtes "groß ansehen" gibt es ohnehin über den
+   nativen Vollbildmodus der <video>-Controls. margin: 0 auto zentriert
+   unabhängig vom umgebenden Layout. */
+#video-player { max-width: 720px; margin: 0 auto 1.3em; }
+#video-player-el { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; object-fit: contain; border-radius: var(--radius-sm); background: #000; }
 #article-body blockquote { border-left: 3px solid var(--accent); padding-left: 1.1em; color: var(--text-muted); margin: 1.3em 0; }
 #article-body figcaption { font-size: 0.85em; color: var(--text-muted); font-style: italic; }
 

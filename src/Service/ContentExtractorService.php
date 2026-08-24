@@ -390,7 +390,12 @@ class ContentExtractorService {
 			// " nicht aus dem href ausbricht. Der finale sanitizeHtml()-Durchlauf
 			// filtert zusätzlich ein evtl. javascript:-Schema heraus.
 			$escapedVideoUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
-			$content = '<a href="' . $escapedVideoUrl . '">Zum Video</a>';
+			// Eigene Marker-Klasse (wie merlin-hero-image/merlin-infobox), damit der
+			// Reader diesen Fallback-Link ausblenden kann, sobald
+			// VideoStreamResolverService::resolve() für dieselbe URL einen
+			// abspielbaren Stream gefunden hat - sonst stünde er redundant neben
+			// dem nativen Player.
+			$content = '<a href="' . $escapedVideoUrl . '" class="merlin-video-fallback-link">Zum Video</a>';
 		}
 
 		// ── Step 9: Apply domain metadata overrides ───────────────────────────

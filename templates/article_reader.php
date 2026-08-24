@@ -582,12 +582,50 @@ function hasNativeVideoHost(articleUrl) {
     return NATIVE_VIDEO_HOSTS.some(domain => host === domain || host.endsWith('.' + domain));
 }
 
+// #video-player lebt statisch als Geschwister VOR #article-body im Template
+// (siehe article-root oben), NICHT als dessen Kind - würde es dort drinstehen,
+// risse das nächste "article-body.innerHTML = ..." (neuer Artikel) es beim
+// Reset mit weg, und getElementById('video-player') liefe danach ins Leere.
+// resetVideoPlayerPosition() garantiert deshalb VOR jedem innerHTML-Reset
+// diese sichere Ausgangsposition; positionVideoPlayer() darf ihn danach
+// beliebig innerhalb von #article-body verschieben (siehe renderArticle()).
+function resetVideoPlayerPosition() {
+    const player = document.getElementById('video-player');
+    const body = document.getElementById('article-body');
+    if (player.nextElementSibling !== body) {
+        body.parentElement.insertBefore(player, body);
+    }
+}
+
+// Platziert den Player direkt hinter dem Hero-Bild (siehe
+// ContentExtractorService Step 12, .merlin-hero-image), falls vorhanden -
+// sonst bleibt er an seiner statischen Position vor #article-body.
+function positionVideoPlayer() {
+    const player = document.getElementById('video-player');
+    const body = document.getElementById('article-body');
+    const hero = body.firstElementChild;
+    if (hero && hero.classList.contains('merlin-hero-image')) {
+        hero.insertAdjacentElement('afterend', player);
+    } else {
+        body.parentElement.insertBefore(player, body);
+    }
+}
+
+// Der "Zum Video"-Fallback-Link (siehe ContentExtractorService, Video-Zweig)
+// wird redundant, sobald der native Player erfolgreich lädt.
+function setFallbackLinkVisible(visible) {
+    document.querySelectorAll('#article-body .merlin-video-fallback-link').forEach(el => {
+        el.style.display = visible ? '' : 'none';
+    });
+}
+
 function teardownVideoPlayer() {
     if (activeHls) {
         activeHls.destroy();
         activeHls = null;
     }
     document.getElementById('video-player').style.display = 'none';
+    setFallbackLinkVisible(true);
 }
 
 async function setupVideoPlayer(articleId, articleUrl) {
@@ -603,8 +641,10 @@ async function setupVideoPlayer(articleId, articleUrl) {
     }
     if (!data?.available || data.type !== 'hls' || typeof data.url !== 'string') return;
 
+    positionVideoPlayer();
     const video = document.getElementById('video-player-el');
     document.getElementById('video-player').style.display = 'block';
+    setFallbackLinkVisible(false);
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = data.url;
@@ -693,6 +733,11 @@ function renderArticle() {
     }
 
     renderTagChips();
+
+    // #video-player muss VOR dem innerHTML-Reset wieder an seine sichere
+    // Ausgangsposition (Geschwister vor #article-body) - siehe
+    // resetVideoPlayerPosition()-Docblock.
+    resetVideoPlayerPosition();
 
     // Bewusst der einzige innerHTML-Einsatz mit ungeschütztem HTML: der Inhalt
     // wurde bereits serverseitig durch ContentExtractorService::sanitizeHtml()
