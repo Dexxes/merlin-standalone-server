@@ -90,7 +90,13 @@ class VideoStreamResolverService {
 		$path = (string) parse_url($articleUrl, PHP_URL_PATH);
 		$segments = array_values(array_filter(explode('/', $path), static fn (string $s) => $s !== ''));
 		$id = end($segments) ?: null;
-		if ($id === null || preg_match('/^[A-Za-z0-9_-]{5,64}$/', $id) !== 1) {
+		// Die crid ist base64url("crid://<domain>/<uuid>") - je nach Domain-Länge
+		// deutlich länger als eine kurze ID (z. B. "sportschau.de" ergibt 76
+		// Zeichen). 64 war hier zu eng geraten und hat echte ARD-URLs verworfen,
+		// bevor die API überhaupt angefragt wurde - 300 lässt genug Luft für
+		// jede realistische Domain, bleibt aber eine Obergrenze gegen absurd
+		// lange Eingaben.
+		if ($id === null || preg_match('/^[A-Za-z0-9_-]{5,300}$/', $id) !== 1) {
 			return null;
 		}
 
