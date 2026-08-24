@@ -17,6 +17,7 @@ use Merlin\Controller\TagController;
 use Merlin\Controller\TtsController;
 use Merlin\Controller\UserContentFilterController;
 use Merlin\Controller\UserSettingsController;
+use Merlin\Controller\VideoStreamController;
 use Merlin\Http\Middleware\AdminOnlyMiddleware;
 use Merlin\Http\Middleware\AuthMiddleware;
 use Merlin\Http\Request;
@@ -69,6 +70,7 @@ $loginFlow = new LoginFlowController($app->loginFlows(), $app->users());
 $userSettings = new UserSettingsController($app->userSettings());
 $share = new ShareController($app->articles(), $app->articleShares());
 $tts = new TtsController($app->articles(), $app->ttsStream());
+$videoStream = new VideoStreamController($app->articles(), $app->videoStreamResolver());
 $publicShare = new PublicShareController(
     $app->articleShares(),
     $app->articles(),
@@ -179,6 +181,9 @@ $router->add('DELETE', '/api/articles/{articleId}/share', $share->destroy(...), 
 
 // TTS-API (authentifiziert)
 $router->add('GET', '/api/articles/{id}/tts', $tts->synthesize(...), [$auth->handle(...)]);
+
+// Native ARD/ZDF/Arte-Stream-Auflösung (siehe VideoStreamResolverService-Docblock)
+$router->add('GET', '/api/articles/{id}/video-stream', $videoStream->resolve(...), [$auth->handle(...)]);
 
 // Public Share (unauthentifiziert - öffentliche Ansicht eines geteilten Artikels)
 $router->add('GET', '/s/{token}', $publicShare->show(...));

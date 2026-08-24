@@ -75,6 +75,8 @@ eingerichtet wird).
 **nginx** (Beispiel):
 
 ```nginx
+client_max_body_size 20m;
+
 location / {
     try_files $uri $uri/ /index.php$is_args$args;
 }
@@ -90,6 +92,18 @@ location ~ \.php$ {
 `Bekannte Limitierungen`) darf `request_terminate_timeout` die
 Hintergrund-Extraktion nach `POST /api/articles` nicht abwürgen - auf einem
 Synology-NAS mit Default 30s ggf. auf `0` setzen.
+
+**Request-Body-Limit (HTTP 413 beim Speichern)**: Die Browser-Erweiterung
+schickt bei manchen Seiten das clientseitig gerenderte HTML statt der reinen
+URL mit (`html`-Feld in `POST /api/articles`, siehe
+`ArticleController::create()`) - bei JS-lastigen SPA-Seiten wie der ARD
+Mediathek oder ZDF kann das mehrere MB groß werden. Nginx' Default für
+`client_max_body_size` (1 MB) und PHPs Defaults für `post_max_size`/
+`upload_max_filesize` (je 8 MB) reichen dafür oft nicht. Bei `413 Payload Too
+Large` direkt beim Speichern: `client_max_body_size` wie oben setzen (nginx)
+bzw. bei Apache äquivalent in der vhost-/`.htaccess`-Konfiguration, und in der
+PHP-FPM-Pool-`php.ini` `post_max_size` sowie `upload_max_filesize` auf
+mindestens denselben Wert erhöhen (Server danach neu laden/neu starten).
 
 ## 6. Smoke-Test (optional, vor dem produktiven Einsatz)
 

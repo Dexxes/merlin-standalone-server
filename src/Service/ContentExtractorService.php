@@ -390,7 +390,12 @@ class ContentExtractorService {
 			// " nicht aus dem href ausbricht. Der finale sanitizeHtml()-Durchlauf
 			// filtert zusätzlich ein evtl. javascript:-Schema heraus.
 			$escapedVideoUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
-			$content = '<a href="' . $escapedVideoUrl . '">Zum Video</a>';
+			// Eigene Marker-Klasse (wie merlin-hero-image/merlin-infobox), damit der
+			// Reader diesen Fallback-Link ausblenden kann, sobald
+			// VideoStreamResolverService::resolve() für dieselbe URL einen
+			// abspielbaren Stream gefunden hat - sonst stünde er redundant neben
+			// dem nativen Player.
+			$content = '<a href="' . $escapedVideoUrl . '" class="merlin-video-fallback-link">Zum Video</a>';
 		}
 
 		// ── Step 9: Apply domain metadata overrides ───────────────────────────
@@ -2232,11 +2237,20 @@ class ContentExtractorService {
 			'th'         => ['colspan', 'rowspan', 'scope'],
 			'col'        => ['span'],
 			'colgroup'   => ['span'],
+			// data-instgrm-permalink/-version: Instagrams offizielles Embed-Markup
+			// (siehe isAllowedInstagramPermalink()). Ohne diese Attribute rendert
+			// embed.js nur einen leeren Platzhalter statt des Posts.
+			'blockquote' => ['data-instgrm-permalink', 'data-instgrm-version'],
 			// iframe steht bewusst NICHT auf $allowedTags (generisches iframe-Embed
-			// ist ein XSS-Vektor) – erlaubt sind nur YouTube-Embeds, siehe
-			// isAllowedYoutubeEmbedSrc(). Deren Attribute laufen trotzdem durch
-			// dieselbe Allowlist-Logik, deshalb der Eintrag hier.
+			// ist ein XSS-Vektor) – erlaubt sind nur Video-Embeds von vertrauens-
+			// würdigen Hosts, siehe isAllowedVideoEmbedSrc(). Deren Attribute laufen
+			// trotzdem durch dieselbe Allowlist-Logik, deshalb der Eintrag hier.
 			'iframe'     => ['src', 'width', 'height', 'frameborder', 'allow', 'allowfullscreen', 'referrerpolicy'],
+			// script steht ebenfalls bewusst NICHT auf $allowedTags – erlaubt sind
+			// nur die beiden offiziellen Widget-Loader von Instagram/X, siehe
+			// isAllowedWidgetScriptSrc(). Kein "onload" o. Ä. auf der Liste: das
+			// Element darf ausschließlich diese drei harmlosen Lade-Attribute tragen.
+			'script'     => ['src', 'async', 'charset'],
 		];
 
 		$prev = libxml_use_internal_errors(true);
@@ -2298,21 +2312,21 @@ class ContentExtractorService {
 			}
 
 			// <iframe> ist grundsätzlich ein XSS-Vektor und steht deshalb nicht auf
-			// $allowedTags – Ausnahme: YouTube-Embeds (taz.de, Blogs, … betten die
-			// häufig ein). Nur bei einer Quelle aus isAllowedYoutubeEmbedSrc() bleibt
-			// das Element erhalten, alles andere fällt auf den generischen
-			// Denylist-Zweig unten durch und wird entfernt.
+			// $allowedTags – Ausnahme: Video-Embeds von vertrauenswürdigen Hosts
+			// (taz.de, Blogs, … betten YouTube/Vimeo/Twitch/… häufig ein). Nur bei
+			// einer Quelle aus isAllowedVideoEmbedSrc() bleibt das Element erhalten,
+			// alles andere fällt auf den generischen Denylist-Zweig unten durch und
+			// wird entfernt.
 			if ($tag === 'iframe') {
-				if ($this->isAllowedYoutubeEmbedSrc($el->getAttribute('src'))) {
+				if ($this->isAllowedVideoEmbedSrc($el->getAttribute('src'))) {
 					$this->sanitizeAttributes($el, $tag, $allowedAttrs);
-					// Erzwungen statt nur erlaubt: Nextclouds eigener
-					// Referrer-Policy-Header steht standardmäßig auf
-					// "no-referrer" (Security-Default via .htaccess/nginx).
-					// Ohne einen Referrer verweigert YouTubes Player den Embed
-					// ("Error 153"). Das per-Element-Attribut überschreibt die
-					// Seiten-Policy für genau diesen iframe-Request – auf die
-					// Quellseite (die es i. d. R. nicht mitliefert) ist hier
-					// kein Verlass, also selbst setzen statt nur durchlassen.
+					// Erzwungen statt nur erlaubt: der Server setzt standardmäßig
+					// keinen Referrer-Policy-Header. Ohne einen Referrer verweigern
+					// manche Player den Embed (z. B. YouTube mit "Error 153"). Das
+					// per-Element-Attribut überschreibt die Seiten-Policy für genau
+					// diesen iframe-Request – auf die Quellseite (die es i. d. R.
+					// nicht mitliefert) ist hier kein Verlass, also selbst setzen
+					// statt nur durchlassen.
 					$el->setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
 				} else {
 					$el->parentNode->removeChild($el);
@@ -2320,7 +2334,24 @@ class ContentExtractorService {
 				continue;
 			}
 
-			// Nicht erlaubtes Tag: <script>/<style>/<object>/<form>/… komplett
+			// <script> ist ebenso grundsätzlich verboten – Ausnahme: exakt die
+			// beiden offiziellen Widget-Loader von Instagram/X (siehe
+			// isAllowedWidgetScriptSrc()), die deren jeweiliges
+			// <blockquote data-instgrm-permalink="…">/<blockquote class="twitter-tweet">
+			// erst zu einem Player/Post rendern. Anders als beim iframe-Sandbox
+			// läuft dieses Skript MIT vollem DOM-Zugriff auf der Reader-Seite,
+			// daher zusätzlich zum exakten Src-Match: keine Kindknoten erlaubt
+			// (kein Einschleusen von Inline-JS über denselben Tag).
+			if ($tag === 'script') {
+				if ($this->isAllowedWidgetScriptSrc($el->getAttribute('src')) && !$el->hasChildNodes()) {
+					$this->sanitizeAttributes($el, $tag, $allowedAttrs);
+				} else {
+					$el->parentNode->removeChild($el);
+				}
+				continue;
+			}
+
+			// Nicht erlaubtes Tag: <style>/<object>/<form>/… komplett
 			// samt Inhalt entfernen; bei rein strukturellen Unknowns bliebe zwar Text
 			// erhalten – da wir aber fail-closed sein wollen und die Allowlist den
 			// gesamten Reader-Content abdeckt, entfernen wir das ganze Element.
@@ -2581,6 +2612,18 @@ class ContentExtractorService {
 					continue;
 				}
 			}
+
+			// Instagrams Embed-Markup trägt die Post-URL in einem data-Attribut statt
+			// href/src – muss trotzdem auf instagram.com zeigen, sonst könnte das
+			// Widget-Skript (siehe isAllowedWidgetScriptSrc()) beliebige fremde Inhalte
+			// nachladen/darstellen.
+			if ($tag === 'blockquote' && $lname === 'data-instgrm-permalink') {
+				$value = trim($el->getAttribute($name));
+				if (!$this->isAllowedInstagramPermalink($value)) {
+					$el->removeAttribute($name);
+					continue;
+				}
+			}
 		}
 
 		// Bei Links, die in einem neuen Tab geöffnet werden, rel härten
@@ -2591,23 +2634,57 @@ class ContentExtractorService {
 	}
 
 	/**
-	 * true, wenn $src ein YouTube-Embed ist (https, Host exakt youtube.com/
-	 * www.youtube.com/www.youtube-nocookie.com, Pfad /embed/…). Das ist die
-	 * einzige Ausnahme von der iframe-Denylist in sanitizeHtml() – bewusst eng
-	 * gefasst (kein Wildcard-Host, kein Schema-Downgrade), weil ein erlaubtes
-	 * iframe sonst zum offenen SSRF-/Clickjacking-Vektor würde. Passend dazu
-	 * muss AddContentSecurityPolicyListener frame-src auf dieselben Hosts
-	 * begrenzen, sonst rendert der Browser das Embed trotz durchgelassenem
-	 * Markup nicht.
+	 * true, wenn $src ein Video-Embed eines der fest hinterlegten, vertrauens-
+	 * würdigen Hosts ist (https, exakter Host-Match, erforderliches Pfad-
+	 * Präfix). Das ist die einzige Ausnahme von der iframe-Denylist in
+	 * sanitizeHtml() – bewusst eng gefasst (kein Wildcard-Host, kein Schema-
+	 * Downgrade), weil ein erlaubtes iframe sonst zum offenen SSRF-/
+	 * Clickjacking-Vektor würde. Passend dazu muss der CSP-Header (siehe
+	 * public/index.php bzw. die aufrufenden Controller) frame-src auf
+	 * dieselben Hosts begrenzen, sonst rendert der Browser das Embed trotz
+	 * durchgelassenem Markup nicht.
+	 *
+	 * ARD Mediathek/ZDF sind bewusst NICHT gelistet: ARD bietet keinen
+	 * dokumentierten Embed-Mechanismus, ZDFs tatsächlicher iframe-Host ist
+	 * unverifiziert – siehe Plan/Commit-Historie. Erst nach manueller
+	 * Verifikation eines echten Embed-Codes hier ergänzen, nicht raten.
 	 */
-	private function isAllowedYoutubeEmbedSrc(string $src): bool {
+	/**
+	 * CSP `frame-src`-Direktive für Antworten, die Artikel-HTML rendern
+	 * (siehe PageController::articleReader(), PublicShareController::show()).
+	 * Muss mit den Hosts in isAllowedVideoEmbedSrc() synchron bleiben, sonst
+	 * lässt der Sanitizer ein iframe durch, das der Browser trotzdem
+	 * verweigert (oder umgekehrt: ein zu weiter Header würde ein iframe
+	 * rendern, das der Sanitizer eigentlich nie hätte durchlassen dürfen –
+	 * die Sanitizer-Allowlist bleibt also so oder so die primäre Verteidigung).
+	 *
+	 * Bewusst OHNE script-src: anders als bei merlin-nextcloud gibt es hier
+	 * (noch) keine Nonce-Infrastruktur, und einige Templates (u. a.
+	 * article_reader.php) enthalten ein serverseitig befülltes Inline-<script>
+	 * für I18N-Daten. Ein restriktiver script-src ohne 'unsafe-inline'/Nonce
+	 * würde dieses Inline-Script blockieren und die Seite kaputt machen – die
+	 * Durchsetzung der isAllowedWidgetScriptSrc()-Allowlist bleibt hier also
+	 * allein Aufgabe des Sanitizers, nicht der CSP.
+	 */
+	public static function videoEmbedFrameSrcHeader(): string {
+		return "frame-src 'self' "
+			. 'https://www.youtube.com https://www.youtube-nocookie.com '
+			. 'https://player.vimeo.com https://player.twitch.tv '
+			. 'https://www.tiktok.com https://www.facebook.com https://www.arte.tv '
+			. 'https://www.instagram.com https://platform.twitter.com';
+	}
+
+	private function isAllowedVideoEmbedSrc(string $src): bool {
 		$src = trim($src);
 		if ($src === '') {
 			return false;
 		}
 
 		$parts = parse_url($src);
-		if ($parts === false || !isset($parts['scheme'], $parts['host'], $parts['path'])) {
+		// 'path' bewusst NICHT in isset() – parse_url() liefert keinen path-Key,
+		// wenn die URL keinen (z. B. "https://player.twitch.tv?channel=…"), das
+		// ist trotzdem eine gültige, im Zweifel erlaubte URL (siehe Twitch unten).
+		if ($parts === false || !isset($parts['scheme'], $parts['host'])) {
 			return false;
 		}
 
@@ -2615,17 +2692,119 @@ class ContentExtractorService {
 			return false;
 		}
 
-		static $allowedHosts = [
-			'www.youtube.com',
-			'youtube.com',
-			'www.youtube-nocookie.com',
-			'youtube-nocookie.com',
+		$host = strtolower($parts['host']);
+		$path = $parts['path'] ?? '';
+
+		// Host => erforderliches Pfad-Präfix, null = kein Präfix nötig (Twitch
+		// unterscheidet Kanal/VOD/Clip rein über Query-Parameter).
+		static $allowedHostPrefixes = [
+			'www.youtube.com'          => '/embed/',
+			'youtube.com'              => '/embed/',
+			'www.youtube-nocookie.com' => '/embed/',
+			'youtube-nocookie.com'     => '/embed/',
+			'player.vimeo.com'         => '/video/',
+			'player.twitch.tv'         => null,
+			'www.tiktok.com'           => '/player/v1/',
+			'www.facebook.com'         => '/plugins/video.php',
+			'www.arte.tv'              => '/player/v5/index.php',
 		];
-		if (!in_array(strtolower($parts['host']), $allowedHosts, true)) {
+
+		if (!array_key_exists($host, $allowedHostPrefixes)) {
 			return false;
 		}
 
-		return str_starts_with($parts['path'], '/embed/');
+		$requiredPrefix = $allowedHostPrefixes[$host];
+		if ($requiredPrefix !== null && !str_starts_with($path, $requiredPrefix)) {
+			return false;
+		}
+
+		// Facebooks und Artes Player nehmen ihrerseits eine fremde URL als
+		// Query-Parameter entgegen (href/json_url) und laden von dort nach –
+		// ohne diese Prüfung wäre der jeweilige Player ein offenes
+		// Redirect-/SSRF-artiges Gadget auf beliebige Ziel-URLs.
+		parse_str($parts['query'] ?? '', $query);
+		if ($host === 'www.facebook.com'
+			&& !$this->hasAllowedQueryUrlHost((string) ($query['href'] ?? ''), ['facebook.com', 'www.facebook.com'])) {
+			return false;
+		}
+		if ($host === 'www.arte.tv'
+			&& !$this->hasAllowedQueryUrlHost((string) ($query['json_url'] ?? ''), ['api.arte.tv'])) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * true, wenn $url eine https-URL ist, deren Host in $allowedHosts steht.
+	 * Absichert Player, die selbst eine fremde URL als Query-Parameter
+	 * entgegennehmen (siehe isAllowedVideoEmbedSrc() für Facebook/Arte).
+	 */
+	private function hasAllowedQueryUrlHost(string $url, array $allowedHosts): bool {
+		if ($url === '') {
+			return false;
+		}
+
+		$parts = parse_url($url);
+		if ($parts === false || !isset($parts['scheme'], $parts['host'])) {
+			return false;
+		}
+
+		if (strtolower($parts['scheme']) !== 'https') {
+			return false;
+		}
+
+		return in_array(strtolower($parts['host']), $allowedHosts, true);
+	}
+
+	/**
+	 * true, wenn $src exakt einer der beiden offiziellen Widget-Loader von
+	 * Instagram/X ist. Bewusst als exakter String-Match (nicht nur Host/Pfad-
+	 * Präfix wie bei isAllowedVideoEmbedSrc()): anders als ein sandboxed
+	 * iframe läuft dieses Skript MIT vollem DOM-Zugriff auf der Reader-Seite,
+	 * daher hier die engstmögliche Fassung.
+	 */
+	private function isAllowedWidgetScriptSrc(string $src): bool {
+		$src = trim($src);
+		if ($src === '') {
+			return false;
+		}
+
+		// Instagram/X liefern ihren offiziellen Embed-Code oft protokollrelativ
+		// ("//www.instagram.com/embed.js") aus – vor dem exakten Match auf
+		// https normalisieren.
+		if (str_starts_with($src, '//')) {
+			$src = 'https:' . $src;
+		}
+
+		static $allowedScriptSrcs = [
+			'https://www.instagram.com/embed.js',
+			'https://platform.twitter.com/widgets.js',
+		];
+
+		return in_array($src, $allowedScriptSrcs, true);
+	}
+
+	/**
+	 * true, wenn $url eine https-URL auf (www.)instagram.com ist. Für das
+	 * data-instgrm-permalink-Attribut von Instagrams Embed-<blockquote>, siehe
+	 * sanitizeAttributes().
+	 */
+	private function isAllowedInstagramPermalink(string $url): bool {
+		if ($url === '') {
+			return false;
+		}
+
+		$parts = parse_url($url);
+		if ($parts === false || !isset($parts['scheme'], $parts['host'])) {
+			return false;
+		}
+
+		if (strtolower($parts['scheme']) !== 'https') {
+			return false;
+		}
+
+		return in_array(strtolower($parts['host']), ['www.instagram.com', 'instagram.com'], true);
 	}
 
 	/**

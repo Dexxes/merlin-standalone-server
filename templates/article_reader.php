@@ -87,9 +87,15 @@ require_once __DIR__ . '/partials/icons.php';
     <p id="a-excerpt" class="article-excerpt" style="display:none;"></p>
     <div id="a-meta" class="article-meta"></div>
     <div id="a-tags" class="article-tags"></div>
+    <div id="video-player" style="display:none;">
+        <video id="video-player-el" controls playsinline></video>
+        <select id="video-player-variant" class="video-player-variant" style="display:none;"></select>
+    </div>
     <div id="article-body"></div>
 </article>
 
+<!-- Lokal vendored (kein Laufzeit-CDN), siehe public/js/vendor/README.md -->
+<script src="<?= url('/js/vendor/hls.min.js') ?>"></script>
 <script>
 const I18N = <?= json_encode($t->forJs([
     'articleReader.removeHighlight',
@@ -550,6 +556,195 @@ function applyFontSize() {
     document.getElementById('article-body').style.fontSize = size + 'px';
 }
 
+// Über innerHTML eingefügte <script>-Tags werden vom Browser NIE ausgeführt
+// (Standardverhalten, unabhängig vom Framework - dasselbe gilt für v-html in
+// merlin-nextclouds ArticleReader.vue). Der Sanitizer lässt aber genau zwei
+// <script>-Tags durch (isAllowedWidgetScriptSrc() im Backend: Instagrams
+// embed.js, X' widgets.js), die das zugehörige <blockquote> erst zum
+// Post/Reel rendern - ohne diesen Schritt bliebe für immer nur der
+// Zitat-Fallback stehen. Jedes gefundene <script> wird deshalb durch eine
+// neu erzeugte Kopie ersetzt; nur DAS bringt den Browser dazu, es
+// auszuführen.
+// Native ARD-/ZDF-/Arte-Wiedergabe über deren interne Stream-APIs, siehe
+// VideoStreamResolverService-Docblock (Backend) für den Hintergrund - das
+// ist bewusst kein offizieller Embed-Weg. Bleibt bei jedem Fehlschlag
+// (nicht auflösbar, Netzwerkfehler, Wiedergabefehler) einfach versteckt;
+// der Artikeltext darunter ist davon nie betroffen.
+const NATIVE_VIDEO_HOSTS = ['ardmediathek.de', 'zdf.de', 'arte.tv'];
+let activeHls = null;
+let currentVariants = [];
+
+function hasNativeVideoHost(articleUrl) {
+    let host;
+    try {
+        host = new URL(articleUrl).hostname.toLowerCase();
+    } catch {
+        return false;
+    }
+    return NATIVE_VIDEO_HOSTS.some(domain => host === domain || host.endsWith('.' + domain));
+}
+
+// #video-player lebt statisch als Geschwister VOR #article-body im Template
+// (siehe article-root oben), NICHT als dessen Kind - würde es dort drinstehen,
+// risse das nächste "article-body.innerHTML = ..." (neuer Artikel) es beim
+// Reset mit weg, und getElementById('video-player') liefe danach ins Leere.
+// resetVideoPlayerPosition() garantiert deshalb VOR jedem innerHTML-Reset
+// diese sichere Ausgangsposition; positionVideoPlayer() darf ihn danach
+// beliebig innerhalb von #article-body verschieben (siehe renderArticle()).
+function resetVideoPlayerPosition() {
+    const player = document.getElementById('video-player');
+    const body = document.getElementById('article-body');
+    if (player.nextElementSibling !== body) {
+        body.parentElement.insertBefore(player, body);
+    }
+}
+
+// Platziert den Player direkt hinter dem Hero-Bild (siehe
+// ContentExtractorService Step 12, .merlin-hero-image), falls vorhanden -
+// sonst bleibt er an seiner statischen Position vor #article-body.
+function positionVideoPlayer() {
+    const player = document.getElementById('video-player');
+    const body = document.getElementById('article-body');
+    const hero = body.firstElementChild;
+    if (hero && hero.classList.contains('merlin-hero-image')) {
+        hero.insertAdjacentElement('afterend', player);
+    } else {
+        body.parentElement.insertBefore(player, body);
+    }
+}
+
+// Der "Zum Video"-Fallback-Link (siehe ContentExtractorService, Video-Zweig)
+// wird redundant, sobald der native Player erfolgreich lädt.
+function setFallbackLinkVisible(visible) {
+    document.querySelectorAll('#article-body .merlin-video-fallback-link').forEach(el => {
+        el.style.display = visible ? '' : 'none';
+    });
+}
+
+function teardownVideoPlayer() {
+    if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+    }
+    document.getElementById('video-player').style.display = 'none';
+    document.getElementById('video-player-variant').style.display = 'none';
+    currentVariants = [];
+    setFallbackLinkVisible(true);
+}
+
+// Baut die Dropdown-Optionen aus den vom Backend gelieferten Varianten (z. B.
+// Standard vs. Gebärdensprache/Audiodeskription bei ARD/ZDF) - nur sichtbar,
+// wenn es tatsächlich mehr als eine gibt, sonst wäre die Auswahl bedeutungslos.
+function populateVideoVariantSelect(variants, selectedIndex) {
+    const select = document.getElementById('video-player-variant');
+    select.innerHTML = '';
+    if (variants.length <= 1) {
+        select.style.display = 'none';
+        return;
+    }
+    variants.forEach((variant, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = variant.label;
+        select.appendChild(option);
+    });
+    select.value = String(selectedIndex);
+    select.style.display = 'block';
+}
+
+function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
+    const video = document.getElementById('video-player-el');
+
+    const seekAndPlay = () => {
+        if (resumeAt > 0) video.currentTime = resumeAt;
+        if (autoplay) video.play().catch(() => {});
+    };
+
+    // Safari unterstützt HLS nativ über <video src>, alle anderen gängigen
+    // Browser brauchen hls.js (MediaSource-basiert).
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        if (resumeAt > 0 || autoplay) {
+            video.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+        }
+        return;
+    }
+
+    if (typeof Hls === 'undefined' || !Hls.isSupported()) {
+        teardownVideoPlayer();
+        return;
+    }
+
+    const hls = new Hls();
+    activeHls = hls;
+    hls.on(Hls.Events.ERROR, (event, errData) => {
+        if (errData.fatal) teardownVideoPlayer();
+    });
+    if (resumeAt > 0 || autoplay) {
+        hls.on(Hls.Events.MANIFEST_PARSED, seekAndPlay);
+    }
+    hls.loadSource(streamUrl);
+    hls.attachMedia(video);
+
+    video.addEventListener('error', teardownVideoPlayer, { once: true });
+}
+
+function selectVideoVariant(index) {
+    const variant = currentVariants[index];
+    if (!variant) return;
+
+    // Abspielposition beim Varianten-Wechsel beibehalten (z. B. von
+    // Gebärdensprache auf Normal mitten im Video umschalten), statt wieder
+    // bei 0 zu beginnen.
+    const video = document.getElementById('video-player-el');
+    const resumeAt = video.currentTime || 0;
+    const wasPlaying = !video.paused;
+
+    if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+    }
+    attachVideoStream(variant.url, { resumeAt, autoplay: wasPlaying });
+}
+
+document.getElementById('video-player-variant').addEventListener('change', event => {
+    selectVideoVariant(Number(event.target.value));
+});
+
+async function setupVideoPlayer(articleId, articleUrl) {
+    teardownVideoPlayer();
+    if (!hasNativeVideoHost(articleUrl)) return;
+
+    let data;
+    try {
+        const res = await fetch(basePath + '/api/articles/' + articleId + '/video-stream', { credentials: 'same-origin' });
+        data = await res.json();
+    } catch {
+        return;
+    }
+    if (!data?.available || data.type !== 'hls' || !Array.isArray(data.variants) || data.variants.length === 0) return;
+
+    currentVariants = data.variants;
+    const selectedIndex = Number.isInteger(data.defaultIndex) && data.variants[data.defaultIndex] ? data.defaultIndex : 0;
+
+    positionVideoPlayer();
+    document.getElementById('video-player').style.display = 'block';
+    setFallbackLinkVisible(false);
+    populateVideoVariantSelect(currentVariants, selectedIndex);
+
+    attachVideoStream(currentVariants[selectedIndex].url);
+}
+
+function executeEmbedScripts() {
+    document.getElementById('article-body').querySelectorAll('script').forEach(oldScript => {
+        const newScript = document.createElement('script');
+        for (const attr of oldScript.attributes) {
+            newScript.setAttribute(attr.name, attr.value);
+        }
+        oldScript.replaceWith(newScript);
+    });
+}
+
 document.getElementById('btn-font').addEventListener('click', () => {
     const current = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10) || FONT_SIZE_STEPS[1];
     const idx = FONT_SIZE_STEPS.indexOf(current);
@@ -607,11 +802,19 @@ function renderArticle() {
 
     renderTagChips();
 
+    // #video-player muss VOR dem innerHTML-Reset wieder an seine sichere
+    // Ausgangsposition (Geschwister vor #article-body) - siehe
+    // resetVideoPlayerPosition()-Docblock.
+    resetVideoPlayerPosition();
+
     // Bewusst der einzige innerHTML-Einsatz mit ungeschütztem HTML: der Inhalt
     // wurde bereits serverseitig durch ContentExtractorService::sanitizeHtml()
-    // bereinigt (allowlist-basiert, iframe/script/… entfernt) - dieselbe
-    // Vertrauensgrenze wie v-html in merlin-nextclouds ArticleReader.vue.
+    // bereinigt (allowlist-basiert, nur bestimmte iframe-Hosts und exakt zwei
+    // <script>-Quellen bleiben erhalten) - dieselbe Vertrauensgrenze wie
+    // v-html in merlin-nextclouds ArticleReader.vue.
     document.getElementById('article-body').innerHTML = article.content || '';
+    executeEmbedScripts();
+    setupVideoPlayer(articleId, article.url);
     applyFontSize();
 
     document.getElementById('reader-status').style.display = 'none';

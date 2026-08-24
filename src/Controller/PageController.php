@@ -16,6 +16,7 @@ use Merlin\Http\Request;
 use Merlin\Http\Response;
 use Merlin\I18n\LocaleResolver;
 use Merlin\I18n\Translator;
+use Merlin\Service\ContentExtractorService;
 
 /**
  * HTML-Seiten für Login/Registrierung/Passwort-Reset/Konto/Admin/Login-Flow -
@@ -223,7 +224,12 @@ final class PageController {
             return Response::redirect('/login');
         }
 
-        return $this->render('article_reader', $request, ['articleId' => (int) $request->routeParam('id')]);
+        return $this->render(
+            'article_reader',
+            $request,
+            ['articleId' => (int) $request->routeParam('id')],
+            ['Content-Security-Policy' => ContentExtractorService::videoEmbedFrameSrcHeader()],
+        );
     }
 
     /**
@@ -307,12 +313,12 @@ final class PageController {
      * (Base-Path-frei, siehe Request::fromGlobals) speist den
      * Sprachumschalter in partials/footer.php (GET /lang/{code}?return=...).
      */
-    private function render(string $template, Request $request, array $vars = []): Response {
+    private function render(string $template, Request $request, array $vars = [], array $extraHeaders = []): Response {
         $vars['t'] = $this->translator($request);
         $vars['requestPath'] = $request->path();
         extract($vars);
         ob_start();
         include __DIR__ . "/../../templates/{$template}.php";
-        return Response::html((string) ob_get_clean());
+        return Response::html((string) ob_get_clean(), 200, $extraHeaders);
     }
 }
