@@ -652,8 +652,26 @@ function populateVideoVariantSelect(variants, selectedIndex) {
     select.style.display = 'block';
 }
 
-function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
+// Pendant zur hls.subtitleTrack-Steuerung in attachVideoStream() unten,
+// für den Safari-Zweig ohne hls.js: hier gibt es keinen
+// SubtitleTrackController, der direkte Änderungen an video.textTracks
+// überschreiben könnte, also reicht das Setzen von .mode direkt.
+function enforceNativeSubtitleLanguage(video, subtitleLanguage) {
+    if (subtitleLanguage === undefined) return;
+    const apply = () => {
+        for (let i = 0; i < video.textTracks.length; i++) {
+            const track = video.textTracks[i];
+            if (track.kind !== 'subtitles' && track.kind !== 'captions') continue;
+            track.mode = subtitleLanguage && track.language === subtitleLanguage ? 'showing' : 'disabled';
+        }
+    };
+    apply();
+    video.textTracks.addEventListener('addtrack', apply);
+}
+
+function attachVideoStream(variant, { resumeAt = 0, autoplay = false } = {}) {
     const video = document.getElementById('video-player-el');
+    const streamUrl = variant.url;
 
     const seekAndPlay = () => {
         if (resumeAt > 0) video.currentTime = resumeAt;
@@ -667,6 +685,9 @@ function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
         if (resumeAt > 0 || autoplay) {
             video.addEventListener('loadedmetadata', seekAndPlay, { once: true });
         }
+        // Kein hls.js hier (natives Safari-HLS) - die Untertitelspur direkt
+        // am <video>-Element erzwingen, siehe enforceNativeSubtitleLanguage().
+        enforceNativeSubtitleLanguage(video, variant.subtitleLanguage);
         return;
     }
 
@@ -682,6 +703,23 @@ function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
     });
     if (resumeAt > 0 || autoplay) {
         hls.on(Hls.Events.MANIFEST_PARSED, seekAndPlay);
+    }
+    // Jedes Arte-Versions-Manifest bettet trotzdem mehrere Untertitel-Spuren
+    // ein statt nur die zur gewählten Version passende - hls.js wählt sonst
+    // selbstständig eine davon (u. a. nach Systemsprache), unabhängig von
+    // der im Dropdown gewählten Version. Über hls.js' eigene
+    // subtitleTrack-API statt direkt am <video>-Element setzen, da hls.js'
+    // SubtitleTrackController eine direkte DOM-Manipulation sonst wieder
+    // überschreiben würde. "und"/kein Wert (siehe
+    // VideoStreamResolverService::resolveArte()) bedeutet "keine Untertitel
+    // für diese Version" - bei ARD/ZDF fehlt das Feld (undefined) und hier
+    // passiert bewusst nichts, um deren bisheriges Verhalten nicht zu
+    // verändern.
+    if (variant.subtitleLanguage !== undefined) {
+        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+            const match = hls.subtitleTracks.findIndex(track => track.lang === variant.subtitleLanguage);
+            hls.subtitleTrack = match;
+        });
     }
     hls.loadSource(streamUrl);
     hls.attachMedia(video);
@@ -704,7 +742,7 @@ function selectVideoVariant(index) {
         activeHls.destroy();
         activeHls = null;
     }
-    attachVideoStream(variant.url, { resumeAt, autoplay: wasPlaying });
+    attachVideoStream(variant, { resumeAt, autoplay: wasPlaying });
 }
 
 document.getElementById('video-player-variant').addEventListener('change', event => {
@@ -732,7 +770,7 @@ async function setupVideoPlayer(articleId, articleUrl) {
     setFallbackLinkVisible(false);
     populateVideoVariantSelect(currentVariants, selectedIndex);
 
-    attachVideoStream(currentVariants[selectedIndex].url);
+    attachVideoStream(currentVariants[selectedIndex]);
 }
 
 function executeEmbedScripts() {

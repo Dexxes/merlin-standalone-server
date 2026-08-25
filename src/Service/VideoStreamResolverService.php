@@ -54,7 +54,7 @@ class VideoStreamResolverService {
 	}
 
 	/**
-	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string, subtitleLanguage?: string|null}>, defaultIndex: int}|null
 	 */
 	public function resolve(string $articleUrl): ?array {
 		$host = strtolower((string) parse_url($articleUrl, PHP_URL_HOST));
@@ -408,7 +408,17 @@ class VideoStreamResolverService {
 				$firstVersion['label'] ?? null,
 				$firstVersion['shortLabel'] ?? null,
 			]) ?? ('Version ' . (count($variants) + 1));
-			$variants[] = ['label' => $label, 'url' => $url];
+			// Jedes Manifest bettet offenbar trotzdem mehrere Untertitel-Spuren
+			// ein statt nur die zur Version passende - Browser/hls.js wählen
+			// sonst per Systemsprache aus, nicht nach der hier gewählten
+			// Version ("UT französisch" zeigte z. B. weiterhin deutsche UT).
+			// subtitleLanguage kommt deshalb mit, damit das Frontend die
+			// passende Spur nach dem Laden aktiv erzwingen kann - "und"
+			// bedeutet laut Arte-API "keine Untertitel" für diese Version.
+			$subtitleLanguage = is_string($firstVersion['subtitleLanguage'] ?? null)
+				? $firstVersion['subtitleLanguage']
+				: null;
+			$variants[] = ['label' => $label, 'url' => $url, 'subtitleLanguage' => $subtitleLanguage];
 		}
 
 		return $this->buildVariantResult($variants);
@@ -474,8 +484,8 @@ class VideoStreamResolverService {
 	 * Gebärdensprache/Audiodeskription nie stillschweigend die Vorauswahl
 	 * ist - bleibt aber im Dropdown wählbar.
 	 *
-	 * @param list<array{label: string, url: string}> $variants
-	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
+	 * @param list<array{label: string, url: string, subtitleLanguage?: string|null}> $variants
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string, subtitleLanguage?: string|null}>, defaultIndex: int}|null
 	 */
 	private function buildVariantResult(array $variants): ?array {
 		$seenUrls = [];
