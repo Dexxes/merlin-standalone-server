@@ -599,16 +599,30 @@ function resetVideoPlayerPosition() {
     }
 }
 
+// Das Hero-Bild (siehe ContentExtractorService Step 12, .merlin-hero-image)
+// wird redundant, sobald es als Video-Poster dient statt separat über dem
+// Player zu stehen - siehe positionVideoPlayer()/teardownVideoPlayer().
+function setHeroImageVisible(visible) {
+    const hero = document.querySelector('#article-body > .merlin-hero-image');
+    if (hero) hero.style.display = visible ? '' : 'none';
+}
+
 // Platziert den Player direkt hinter dem Hero-Bild (siehe
 // ContentExtractorService Step 12, .merlin-hero-image), falls vorhanden -
-// sonst bleibt er an seiner statischen Position vor #article-body.
+// sonst bleibt er an seiner statischen Position vor #article-body. Das
+// Hero-Bild selbst wird dabei zum Video-Poster statt zusätzlich separat
+// angezeigt zu werden.
 function positionVideoPlayer() {
     const player = document.getElementById('video-player');
+    const video = document.getElementById('video-player-el');
     const body = document.getElementById('article-body');
     const hero = body.firstElementChild;
     if (hero && hero.classList.contains('merlin-hero-image')) {
+        video.poster = hero.querySelector('img')?.src || '';
+        setHeroImageVisible(false);
         hero.insertAdjacentElement('afterend', player);
     } else {
+        video.poster = '';
         body.parentElement.insertBefore(player, body);
     }
 }
@@ -628,8 +642,10 @@ function teardownVideoPlayer() {
     }
     document.getElementById('video-player').style.display = 'none';
     document.getElementById('video-player-variant').style.display = 'none';
+    document.getElementById('video-player-el').poster = '';
     currentVariants = [];
     setFallbackLinkVisible(true);
+    setHeroImageVisible(true);
 }
 
 // Baut die Dropdown-Optionen aus den vom Backend gelieferten Varianten (z. B.
