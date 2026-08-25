@@ -87,7 +87,7 @@ require_once __DIR__ . '/partials/icons.php';
     <p id="a-excerpt" class="article-excerpt" style="display:none;"></p>
     <div id="a-meta" class="article-meta"></div>
     <div id="a-tags" class="article-tags"></div>
-    <div id="video-player" style="display:none;">
+    <div id="video-player" data-hl-exclude style="display:none;">
         <video id="video-player-el" controls playsinline></video>
         <select id="video-player-variant" class="video-player-variant" style="display:none;"></select>
     </div>
@@ -162,6 +162,20 @@ if (!document.getElementById('merlin-hl-style')) {
     document.head.appendChild(hlStyle);
 }
 
+// data-hl-exclude: siehe #video-player weiter unten - setupVideoPlayer()
+// verschiebt dieses Element bei nativ abspielbaren Artikeln (ARD/ZDF/Arte)
+// live in #article-body hinein (direkt hinter das Hero-Bild), obwohl es nicht
+// Teil des rohen article.content ist, gegen den XPaths plattformübergreifend
+// (iOS/nextcloud) berechnet werden. Ohne diesen Ausschluss würde es bei
+// Content mit Top-Level-<div>-Blöcken (z. B. .merlin-infobox) hinter dem
+// Hero-Bild die div[n]-Zählung verschieben - siehe merlin-nextclouds
+// highlight-engine.js für dieselbe Problemklasse (dort per data-hl-flatten/
+// data-hl-exclude gelöst, hier reicht ein reiner Ausschluss, da es keinen
+// Hero/Rest-Split gibt).
+function isExcluded(el) {
+    return el.nodeType === Node.ELEMENT_NODE && el.hasAttribute('data-hl-exclude');
+}
+
 function getXPathForNode(node, root) {
     if (node === root) return '.';
     const parts = [];
@@ -180,7 +194,7 @@ function getXPathForNode(node, root) {
             let index = 1;
             let sib = current.previousElementSibling;
             while (sib) {
-                if (sib.nodeName.toLowerCase() === tag) index++;
+                if (sib.nodeName.toLowerCase() === tag && !isExcluded(sib)) index++;
                 sib = sib.previousElementSibling;
             }
             parts.unshift(tag + '[' + index + ']');
@@ -217,7 +231,7 @@ function resolveXPath(xpath, root) {
             let count = 0;
             let found = null;
             for (const child of node.children) {
-                if (child.nodeName.toLowerCase() === tag) {
+                if (child.nodeName.toLowerCase() === tag && !isExcluded(child)) {
                     if (count === idx) { found = child; break; }
                     count++;
                 }
