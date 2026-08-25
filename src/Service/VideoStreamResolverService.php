@@ -421,7 +421,24 @@ class VideoStreamResolverService {
 			$variants[] = ['label' => $label, 'url' => $url, 'subtitleLanguage' => $subtitleLanguage];
 		}
 
-		return $this->buildVariantResult($variants);
+		$result = $this->buildVariantResult($variants);
+		if ($result === null) {
+			return null;
+		}
+
+		// Kein Varianten-Dropdown für Arte: Die Tonspur ist über alle
+		// Versionen hinweg identisch (immer die Originalfassung), die
+		// einzige echte Auswahl ist die Untertitelsprache - und die lässt
+		// sich bereits über die native CC-Schaltfläche des <video>-Elements
+		// steuern (siehe subtitleLanguage oben). Ein zusätzliches Dropdown
+		// wäre redundant, deshalb nur die als Standard gewählte Variante
+		// zurückgeben - article_reader.php blendet das Dropdown ohnehin
+		// schon aus, sobald variants.length <= 1 ist.
+		return [
+			'type'         => 'hls',
+			'variants'     => [$result['variants'][$result['defaultIndex']]],
+			'defaultIndex' => 0,
+		];
 	}
 
 	// ──────────────────────────────────────────────────────────────────────
