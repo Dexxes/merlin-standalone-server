@@ -39,7 +39,6 @@ final class VideoStreamController {
             'type'         => $resolved['type'],
             'variants'     => $resolved['variants'],
             'defaultIndex' => $resolved['defaultIndex'],
-            'variantMode'  => $resolved['variantMode'],
         ]);
     }
 }

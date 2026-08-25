@@ -573,11 +573,6 @@ function applyFontSize() {
 const NATIVE_VIDEO_HOSTS = ['ardmediathek.de', 'zdf.de', 'arte.tv'];
 let activeHls = null;
 let currentVariants = [];
-// 'url' (ARD/ZDF): jede Variante ist eine eigene Manifest-URL, ein Wechsel
-// lädt neu. 'audioTrack' (Arte): alle Varianten stecken als Audio-Spuren im
-// selben Manifest, ein Wechsel schaltet nur hls.js' Audio-Track um (siehe
-// attachVideoStream()/selectVideoVariant()).
-let currentVariantMode = 'url';
 
 function hasNativeVideoHost(articleUrl) {
     let host;
@@ -634,7 +629,6 @@ function teardownVideoPlayer() {
     document.getElementById('video-player').style.display = 'none';
     document.getElementById('video-player-variant').style.display = 'none';
     currentVariants = [];
-    currentVariantMode = 'url';
     setFallbackLinkVisible(true);
 }
 
@@ -658,27 +652,6 @@ function populateVideoVariantSelect(variants, selectedIndex) {
     select.style.display = 'block';
 }
 
-// Safari-Pendant zu Hls.Events.AUDIO_TRACKS_UPDATED unten: bei nativer
-// HLS-Wiedergabe (kein hls.js) liefert die AudioTrackList des <video>-
-// Elements dieselbe Information, aber erst sobald der Browser sie aus dem
-// Manifest gelesen hat (addtrack-Event statt sofort verfügbar).
-function watchNativeAudioTracks(video, streamUrl) {
-    if (!video.audioTracks) return;
-    const sync = () => {
-        if (video.audioTracks.length > 1) {
-            currentVariants = Array.from(video.audioTracks).map((track, i) => ({
-                label: track.label || track.language || `Version ${i + 1}`,
-                url: streamUrl,
-            }));
-            const selectedIndex = Array.from(video.audioTracks).findIndex(t => t.enabled);
-            populateVideoVariantSelect(currentVariants, selectedIndex);
-        }
-    };
-    video.audioTracks.addEventListener('addtrack', sync);
-    video.audioTracks.addEventListener('change', sync);
-    sync();
-}
-
 function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
     const video = document.getElementById('video-player-el');
 
@@ -693,9 +666,6 @@ function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
         video.src = streamUrl;
         if (resumeAt > 0 || autoplay) {
             video.addEventListener('loadedmetadata', seekAndPlay, { once: true });
-        }
-        if (currentVariantMode === 'audioTrack') {
-            watchNativeAudioTracks(video, streamUrl);
         }
         return;
     }
@@ -713,20 +683,6 @@ function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
     if (resumeAt > 0 || autoplay) {
         hls.on(Hls.Events.MANIFEST_PARSED, seekAndPlay);
     }
-    if (currentVariantMode === 'audioTrack') {
-        // Die tatsächlichen Sprach-/UT-Varianten sind erst nach dem Parsen des
-        // Manifests bekannt (siehe resolveArte()-Docblock im Backend) - das
-        // Backend liefert bis dahin nur einen Platzhalter-Eintrag.
-        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
-            if (hls.audioTracks.length > 1) {
-                currentVariants = hls.audioTracks.map((track, i) => ({
-                    label: track.name || track.lang || `Version ${i + 1}`,
-                    url: streamUrl,
-                }));
-                populateVideoVariantSelect(currentVariants, hls.audioTrack);
-            }
-        });
-    }
     hls.loadSource(streamUrl);
     hls.attachMedia(video);
 
@@ -736,24 +692,6 @@ function attachVideoStream(streamUrl, { resumeAt = 0, autoplay = false } = {}) {
 function selectVideoVariant(index) {
     const variant = currentVariants[index];
     if (!variant) return;
-
-    // Bei Arte stecken alle Varianten als Audio-Spuren im selben HLS-Manifest
-    // (siehe VideoStreamResolverService::resolveArte()) - hier reicht ein
-    // Umschalten des Audio-Tracks, ein Neuladen der (identischen)
-    // Manifest-URL wäre unnötig und würde die Wiedergabe unterbrechen statt
-    // sie nahtlos fortzusetzen.
-    if (currentVariantMode === 'audioTrack') {
-        const video = document.getElementById('video-player-el');
-        if (activeHls) {
-            activeHls.audioTrack = index;
-        } else if (video.audioTracks) {
-            for (let i = 0; i < video.audioTracks.length; i++) {
-                video.audioTracks[i].enabled = i === index;
-            }
-        }
-        document.getElementById('video-player-variant').value = String(index);
-        return;
-    }
 
     // Abspielposition beim Varianten-Wechsel beibehalten (z. B. von
     // Gebärdensprache auf Normal mitten im Video umschalten), statt wieder
@@ -787,7 +725,6 @@ async function setupVideoPlayer(articleId, articleUrl) {
     if (!data?.available || data.type !== 'hls' || !Array.isArray(data.variants) || data.variants.length === 0) return;
 
     currentVariants = data.variants;
-    currentVariantMode = data.variantMode === 'audioTrack' ? 'audioTrack' : 'url';
     const selectedIndex = Number.isInteger(data.defaultIndex) && data.variants[data.defaultIndex] ? data.defaultIndex : 0;
 
     positionVideoPlayer();

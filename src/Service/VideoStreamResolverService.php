@@ -54,7 +54,7 @@ class VideoStreamResolverService {
 	}
 
 	/**
-	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int, variantMode: 'url'|'audioTrack'}|null
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
 	 */
 	public function resolve(string $articleUrl): ?array {
 		$host = strtolower((string) parse_url($articleUrl, PHP_URL_HOST));
@@ -348,12 +348,7 @@ class VideoStreamResolverService {
 	// ──────────────────────────────────────────────────────────────────────
 
 	private function resolveArte(string $articleUrl): ?array {
-		// Arte nutzt mehrere ID-Formate in freier Wildbahn: das klassische
-		// "129847-001-A" (numerisch + Episoden-/A-F-Suffix) UND kürzere,
-		// zweibuchstabig-präfixierte IDs wie "RC-027957" (z. B. Serien-
-		// Kurzformate) - die Player-API akzeptiert beide gleichermaßen, nur
-		// diese Regex kannte das zweite Format ursprünglich nicht.
-		if (preg_match('#(\d{6}-\d{3}-[AF]|[A-Z]{2}-\d+|LIVE)#', $articleUrl, $m) !== 1) {
+		if (preg_match('#(\d{6}-\d{3}-[AF]|LIVE)#', $articleUrl, $m) !== 1) {
 			return null;
 		}
 		$videoId = $m[1];
@@ -379,21 +374,11 @@ class VideoStreamResolverService {
 			return null;
 		}
 
-		// Live verifiziert (siehe Commit-Historie): Arte stellt dem
-		// eigentlichen Protokoll ein "API_"-Präfix voran (z. B.
-		// "API_HLS_NG_MA" statt nur "HLS..."), deshalb str_contains() statt
-		// str_starts_with() - Letzteres hatte hier jeden Stream verworfen.
-		//
-		// Mehrere Sprach-/Untertitel-Kombinationen ("Originalfassung - UT
-		// deutsch" etc.) sind bei Arte KEINE eigenen Stream-Einträge/URLs
-		// wie bei ARD/ZDF, sondern Audio-/Untertitel-Spuren INNERHALB eines
-		// einzigen HLS-Manifests (stream.versions[]). Diese Methode liefert
-		// deshalb weiterhin nur EINE Manifest-URL (nach Qualität dedupliziert,
-		// falls es doch mehrere Stream-Einträge gibt); die Sprachauswahl
-		// selbst passiert im Frontend über hls.js' Audio-Track-API
-		// (Hls.Events.AUDIO_TRACKS_UPDATED / hls.audioTrack), sobald das
-		// Manifest geladen ist - dafür markiert buildVariantResult() das
-		// Ergebnis unten mit variantMode 'audioTrack' statt 'url'.
+		// Mehrere Sprach-/Untertitel-Fassungen (z. B. "VOSTF", "VF") sind bei
+		// Arte üblich - alle HLS-Einträge sammeln statt nur den ersten, siehe
+		// buildVariantResult(). Die genauen Label-Feldnamen sind aus der
+		// Recherche nicht live verifiziert, deshalb mehrere Kandidaten
+		// probieren und sonst nummeriert benennen statt zu verwerfen.
 		$variants = [];
 		foreach ($streams as $stream) {
 			if (!is_array($stream)) {
@@ -401,15 +386,18 @@ class VideoStreamResolverService {
 			}
 			$protocol = strtoupper((string) ($stream['protocol'] ?? ''));
 			$url = $stream['url'] ?? null;
-			if (!str_contains($protocol, 'HLS') || !is_string($url) || !$this->looksLikeHlsUrl($url)) {
+			if (!str_starts_with($protocol, 'HLS') || !is_string($url) || !$this->looksLikeHlsUrl($url)) {
 				continue;
 			}
-			$label = $this->firstNonEmptyString([$stream['mainQuality']['label'] ?? null])
-				?? ('Version ' . (count($variants) + 1));
+			$label = $this->firstNonEmptyString([
+				$stream['versionShortLibelle'] ?? null,
+				$stream['versionLibelle'] ?? null,
+				$stream['audioLanguage'] ?? null,
+			]) ?? ('Version ' . (count($variants) + 1));
 			$variants[] = ['label' => $label, 'url' => $url];
 		}
 
-		return $this->buildVariantResult($variants, 'audioTrack');
+		return $this->buildVariantResult($variants);
 	}
 
 	// ──────────────────────────────────────────────────────────────────────
@@ -473,10 +461,9 @@ class VideoStreamResolverService {
 	 * ist - bleibt aber im Dropdown wählbar.
 	 *
 	 * @param list<array{label: string, url: string}> $variants
-	 * @param 'url'|'audioTrack' $variantMode
-	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int, variantMode: 'url'|'audioTrack'}|null
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
 	 */
-	private function buildVariantResult(array $variants, string $variantMode = 'url'): ?array {
+	private function buildVariantResult(array $variants): ?array {
 		$seenUrls = [];
 		$deduped = [];
 		foreach ($variants as $variant) {
@@ -498,7 +485,7 @@ class VideoStreamResolverService {
 			}
 		}
 
-		return ['type' => 'hls', 'variants' => $deduped, 'defaultIndex' => $defaultIndex, 'variantMode' => $variantMode];
+		return ['type' => 'hls', 'variants' => $deduped, 'defaultIndex' => $defaultIndex];
 	}
 
 	/**
