@@ -385,6 +385,13 @@ class ContentExtractorService {
 				?: ($heroImageData['src'] ?? null);
 			$publishedAt = $this->extractPublishedDate($html, $content);
 		}
+		else if ($domain === 'arte.tv') {
+			// Arte löst zuverlässig über VideoStreamResolverService::resolveArte()
+			// auf (siehe dortiger Docblock) - der "Zum Video"-Fallback-Link wäre
+			// hier nur noch redundant neben dem nativen Player, anders als bei
+			// ARD/ZDF, wo er als Absicherung bleibt.
+			$content = '';
+		}
 		else {
 			// $url in ein Attribut eingebettet → escapen, damit ein URL mit ' oder
 			// " nicht aus dem href ausbricht. Der finale sanitizeHtml()-Durchlauf
