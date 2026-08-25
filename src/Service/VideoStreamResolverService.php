@@ -54,7 +54,7 @@ class VideoStreamResolverService {
 	}
 
 	/**
-	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string, subtitleLanguage?: string|null}>, defaultIndex: int}|null
 	 */
 	public function resolve(string $articleUrl): ?array {
 		$host = strtolower((string) parse_url($articleUrl, PHP_URL_HOST));
@@ -348,7 +348,12 @@ class VideoStreamResolverService {
 	// ──────────────────────────────────────────────────────────────────────
 
 	private function resolveArte(string $articleUrl): ?array {
-		if (preg_match('#(\d{6}-\d{3}-[AF]|LIVE)#', $articleUrl, $m) !== 1) {
+		// Arte nutzt mehrere ID-Formate in freier Wildbahn: das klassische
+		// "129847-001-A" (numerisch + Episoden-/A-F-Suffix) UND kürzere,
+		// zweibuchstabig-präfixierte IDs wie "RC-027957" (z. B. Serien-
+		// Kurzformate) - die Player-API akzeptiert beide gleichermaßen, nur
+		// diese Regex kannte das zweite Format ursprünglich nicht.
+		if (preg_match('#(\d{6}-\d{3}-[AF]|[A-Z]{2}-\d+|LIVE)#', $articleUrl, $m) !== 1) {
 			return null;
 		}
 		$videoId = $m[1];
@@ -374,11 +379,19 @@ class VideoStreamResolverService {
 			return null;
 		}
 
-		// Mehrere Sprach-/Untertitel-Fassungen (z. B. "VOSTF", "VF") sind bei
-		// Arte üblich - alle HLS-Einträge sammeln statt nur den ersten, siehe
-		// buildVariantResult(). Die genauen Label-Feldnamen sind aus der
-		// Recherche nicht live verifiziert, deshalb mehrere Kandidaten
-		// probieren und sonst nummeriert benennen statt zu verwerfen.
+		// Live verifiziert (siehe Commit-Historie): Arte stellt dem
+		// eigentlichen Protokoll ein "API_"-Präfix voran (z. B.
+		// "API_HLS_NG_MA" statt nur "HLS..."), deshalb str_contains() statt
+		// str_starts_with() - Letzteres hatte hier jeden Stream verworfen.
+		//
+		// Mehrere Sprach-/Untertitel-Kombinationen ("Originalfassung - UT
+		// deutsch" etc.) sind bei Arte eigene Stream-Einträge mit jeweils
+		// eigener Manifest-URL (genau wie bei ARD/ZDF) - live verifiziert per
+		// API-Response: jeder streams[]-Eintrag trägt eine eigene .url UND
+		// ein .versions[]-Array mit dem eigentlichen Label ("Originalfassung
+		// - UT deutsch", "Originalfassung", …), während .mainQuality.label
+		// nur die Bildqualität beschreibt (z. B. "720p") und deshalb NICHT
+		// zum Beschriften taugt.
 		$variants = [];
 		foreach ($streams as $stream) {
 			if (!is_array($stream)) {
@@ -386,18 +399,46 @@ class VideoStreamResolverService {
 			}
 			$protocol = strtoupper((string) ($stream['protocol'] ?? ''));
 			$url = $stream['url'] ?? null;
-			if (!str_starts_with($protocol, 'HLS') || !is_string($url) || !$this->looksLikeHlsUrl($url)) {
+			if (!str_contains($protocol, 'HLS') || !is_string($url) || !$this->looksLikeHlsUrl($url)) {
 				continue;
 			}
+			$versions = $stream['versions'] ?? null;
+			$firstVersion = is_array($versions) && is_array($versions[0] ?? null) ? $versions[0] : null;
 			$label = $this->firstNonEmptyString([
-				$stream['versionShortLibelle'] ?? null,
-				$stream['versionLibelle'] ?? null,
-				$stream['audioLanguage'] ?? null,
+				$firstVersion['label'] ?? null,
+				$firstVersion['shortLabel'] ?? null,
 			]) ?? ('Version ' . (count($variants) + 1));
-			$variants[] = ['label' => $label, 'url' => $url];
+			// Jedes Manifest bettet offenbar trotzdem mehrere Untertitel-Spuren
+			// ein statt nur die zur Version passende - Browser/hls.js wählen
+			// sonst per Systemsprache aus, nicht nach der hier gewählten
+			// Version ("UT französisch" zeigte z. B. weiterhin deutsche UT).
+			// subtitleLanguage kommt deshalb mit, damit das Frontend die
+			// passende Spur nach dem Laden aktiv erzwingen kann - "und"
+			// bedeutet laut Arte-API "keine Untertitel" für diese Version.
+			$subtitleLanguage = is_string($firstVersion['subtitleLanguage'] ?? null)
+				? $firstVersion['subtitleLanguage']
+				: null;
+			$variants[] = ['label' => $label, 'url' => $url, 'subtitleLanguage' => $subtitleLanguage];
 		}
 
-		return $this->buildVariantResult($variants);
+		$result = $this->buildVariantResult($variants);
+		if ($result === null) {
+			return null;
+		}
+
+		// Kein Varianten-Dropdown für Arte: Die Tonspur ist über alle
+		// Versionen hinweg identisch (immer die Originalfassung), die
+		// einzige echte Auswahl ist die Untertitelsprache - und die lässt
+		// sich bereits über die native CC-Schaltfläche des <video>-Elements
+		// steuern (siehe subtitleLanguage oben). Ein zusätzliches Dropdown
+		// wäre redundant, deshalb nur die als Standard gewählte Variante
+		// zurückgeben - article_reader.php blendet das Dropdown ohnehin
+		// schon aus, sobald variants.length <= 1 ist.
+		return [
+			'type'         => 'hls',
+			'variants'     => [$result['variants'][$result['defaultIndex']]],
+			'defaultIndex' => 0,
+		];
 	}
 
 	// ──────────────────────────────────────────────────────────────────────
@@ -460,8 +501,8 @@ class VideoStreamResolverService {
 	 * Gebärdensprache/Audiodeskription nie stillschweigend die Vorauswahl
 	 * ist - bleibt aber im Dropdown wählbar.
 	 *
-	 * @param list<array{label: string, url: string}> $variants
-	 * @return array{type: 'hls', variants: list<array{label: string, url: string}>, defaultIndex: int}|null
+	 * @param list<array{label: string, url: string, subtitleLanguage?: string|null}> $variants
+	 * @return array{type: 'hls', variants: list<array{label: string, url: string, subtitleLanguage?: string|null}>, defaultIndex: int}|null
 	 */
 	private function buildVariantResult(array $variants): ?array {
 		$seenUrls = [];
