@@ -120,6 +120,13 @@ $highlight = $highlights->create($articleId, (int) $user['id'], [
 check('Highlight wurde angelegt', $highlight['highlighted_text'] === 'wichtiger Satz');
 check('Highlight fremden Users bleibt leer', $highlights->findByArticleId($otherArticleId, (int) $user['id']) === []);
 
+$articleStats = $articles->getStorageStats((int) $user['id']);
+check('Speicherstats zählen nur eigene Artikel', $articleStats['count'] === 1);
+check('Speicherstats liefern Bytegröße > 0', $articleStats['bytes'] > 0);
+$highlightStats = $highlights->getStorageStats((int) $user['id']);
+check('Highlight-Speicherstats zählen 1 Eintrag', $highlightStats['count'] === 1);
+check('Highlight-Speicherstats liefern Bytegröße > 0', $highlightStats['bytes'] > 0);
+
 echo "== Login-Flow-v2-Klon ==\n";
 $loginFlows = new LoginFlowRepository($pdo);
 
