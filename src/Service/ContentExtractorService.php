@@ -380,7 +380,19 @@ class ContentExtractorService {
 			$title = html_entity_decode($title, ENT_QUOTES, 'UTF-8');
 
 			$content = $readability->getContent() ?: '';
-			$content = html_entity_decode($content, ENT_QUOTES, 'UTF-8');
+			// ENT_NOQUOTES statt ENT_QUOTES: $content ist weiterhin HTML-Markup
+			// (Readability liefert einen HTML-Fragment-String, keinen reinen Text),
+			// das anschließend durch applyPostFilters()/sanitizeHtml() erneut per
+			// DOM geparst wird. ENT_QUOTES decodierte &quot;/&#34; in Attributen
+			// (z. B. <blockquote data-instgrm-permalink="…&#34;…">, oder Reste
+			// von Widget-Markup, das Readability unverändert übernommen hat)
+			// zurück in literale Anführungszeichen und riss damit dieselbe
+			// Attributgrenze auf wie bei den Pre-Readability-Decode-Aufrufen oben
+			// (siehe dortiger Kommentar) — mit demselben Resultat: der Rest des
+			// Attributwerts rutschte als kaputtes Markup/Text in den extrahierten
+			// Content. ENT_NOQUOTES decodiert weiterhin named/numeric Entities in
+			// sichtbarem Text, lässt Quote-Entities aber unangetastet.
+			$content = html_entity_decode($content, ENT_NOQUOTES, 'UTF-8');
 
 			//$excerpt = $readability->getExcerpt();
 			//$excerpt = html_entity_decode($excerpt, ENT_QUOTES, 'UTF-8');
