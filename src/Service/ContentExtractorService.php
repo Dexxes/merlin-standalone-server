@@ -294,19 +294,31 @@ class ContentExtractorService {
 		// Apply per-domain <pre-filter> remove rules BEFORE Readability sees
 		// the HTML, so filtered elements are never considered as article content.
 		$rawHtml = $this->applyPreFilters($rawHtml, $domain, $trace);
-		$rawHtml = html_entity_decode($rawHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		// ENT_NOQUOTES statt ENT_QUOTES: saveHTML() re-encodiert Attributwerte
+		// korrekt (z. B. &quot;/&#34; für ein eingebettetes literales Anführungs-
+		// zeichen). ENT_QUOTES decodierte diese Quote-Entities aber wieder in
+		// literale " / ' zurück — auf dem rohen String, ohne erneute DOM-
+		// Serialisierung. Bei Attributen, die selbst JSON/JS mit Anführungs-
+		// zeichen tragen (z. B. Alpine.js' x-data="{…&#34;key&#34;…}", verbreitet
+		// u. a. bei spiegel.de), riss das die Attributgrenze mittendrin auf: der
+		// Rest des Attributwerts (oft ein ganzer Script-Block) rutschte als
+		// kaputtes Markup/Textinhalt in den Baum und konnte von Readability als
+		// Artikeltext ausgewählt werden. ENT_NOQUOTES decodiert weiterhin named/
+		// numeric Entities in sichtbarem Text (Umlaute, &amp; …), lässt aber
+		// Quote-Entities unangetastet, sodass Attributwerte gültig bleiben.
+		$rawHtml = html_entity_decode($rawHtml, ENT_NOQUOTES | ENT_HTML5, 'UTF-8');
 
 		// ── Step 5: Infobox markers ──────────────────────────────────────────
 		// Add 'merlin-infobox' CSS class to elements declared as <infobox> in
 		// the domain config. Must run BEFORE Readability so the class survives.
 		$rawHtml = $this->applyInfoboxMarkers($rawHtml, $domain, $trace);
-		$rawHtml = html_entity_decode($rawHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		$rawHtml = html_entity_decode($rawHtml, ENT_NOQUOTES | ENT_HTML5, 'UTF-8');
 
 		// ── Step 6: Custom class markers ────────────────────────────────────
 		// Add arbitrary CSS classes to elements declared as <saveElements> in
 		// the domain config. Must run BEFORE Readability so the classes survive.
 		$rawHtml = $this->applyClassMarkers($rawHtml, $domain, $trace);
-		$rawHtml = html_entity_decode($rawHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		$rawHtml = html_entity_decode($rawHtml, ENT_NOQUOTES | ENT_HTML5, 'UTF-8');
 
 		// Nur von Step 5 (domainMeta-Override) oder dem Video-Zweig unten gesetzt,
 		// wenn kein og:description/domain-Excerpt vorhanden ist — explizit auf
