@@ -154,6 +154,7 @@ $router->add('PUT', '/api/articles/{id}/favorite', $articles->toggleFavorite(...
 $router->add('PUT', '/api/articles/{id}/archive', $articles->toggleArchive(...), [$auth->handle(...)]);
 $router->add('PUT', '/api/articles/{id}/progress', $articles->updateProgress(...), [$auth->handle(...)]);
 $router->add('GET', '/api/articles/{id}/export/html', $articles->exportHtml(...), [$auth->handle(...)]);
+$router->add('POST', '/api/articles/{id}/retry-extraction', $articles->retryExtraction(...), [$auth->handle(...)]);
 
 // Tag-API
 $router->add('GET', '/api/tags', $tags->index(...), [$auth->handle(...)]);
