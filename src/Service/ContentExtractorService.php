@@ -294,19 +294,31 @@ class ContentExtractorService {
 		// Apply per-domain <pre-filter> remove rules BEFORE Readability sees
 		// the HTML, so filtered elements are never considered as article content.
 		$rawHtml = $this->applyPreFilters($rawHtml, $domain, $trace);
-		$rawHtml = html_entity_decode($rawHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		// ENT_NOQUOTES statt ENT_QUOTES: saveHTML() re-encodiert Attributwerte
+		// korrekt (z. B. &quot;/&#34; für ein eingebettetes literales Anführungs-
+		// zeichen). ENT_QUOTES decodierte diese Quote-Entities aber wieder in
+		// literale " / ' zurück — auf dem rohen String, ohne erneute DOM-
+		// Serialisierung. Bei Attributen, die selbst JSON/JS mit Anführungs-
+		// zeichen tragen (z. B. Alpine.js' x-data="{…&#34;key&#34;…}", verbreitet
+		// u. a. bei spiegel.de), riss das die Attributgrenze mittendrin auf: der
+		// Rest des Attributwerts (oft ein ganzer Script-Block) rutschte als
+		// kaputtes Markup/Textinhalt in den Baum und konnte von Readability als
+		// Artikeltext ausgewählt werden. ENT_NOQUOTES decodiert weiterhin named/
+		// numeric Entities in sichtbarem Text (Umlaute, &amp; …), lässt aber
+		// Quote-Entities unangetastet, sodass Attributwerte gültig bleiben.
+		$rawHtml = html_entity_decode($rawHtml, ENT_NOQUOTES | ENT_HTML5, 'UTF-8');
 
 		// ── Step 5: Infobox markers ──────────────────────────────────────────
 		// Add 'merlin-infobox' CSS class to elements declared as <infobox> in
 		// the domain config. Must run BEFORE Readability so the class survives.
 		$rawHtml = $this->applyInfoboxMarkers($rawHtml, $domain, $trace);
-		$rawHtml = html_entity_decode($rawHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		$rawHtml = html_entity_decode($rawHtml, ENT_NOQUOTES | ENT_HTML5, 'UTF-8');
 
 		// ── Step 6: Custom class markers ────────────────────────────────────
 		// Add arbitrary CSS classes to elements declared as <saveElements> in
 		// the domain config. Must run BEFORE Readability so the classes survive.
 		$rawHtml = $this->applyClassMarkers($rawHtml, $domain, $trace);
-		$rawHtml = html_entity_decode($rawHtml, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		$rawHtml = html_entity_decode($rawHtml, ENT_NOQUOTES | ENT_HTML5, 'UTF-8');
 
 		// Nur von Step 5 (domainMeta-Override) oder dem Video-Zweig unten gesetzt,
 		// wenn kein og:description/domain-Excerpt vorhanden ist — explizit auf
@@ -368,7 +380,19 @@ class ContentExtractorService {
 			$title = html_entity_decode($title, ENT_QUOTES, 'UTF-8');
 
 			$content = $readability->getContent() ?: '';
-			$content = html_entity_decode($content, ENT_QUOTES, 'UTF-8');
+			// ENT_NOQUOTES statt ENT_QUOTES: $content ist weiterhin HTML-Markup
+			// (Readability liefert einen HTML-Fragment-String, keinen reinen Text),
+			// das anschließend durch applyPostFilters()/sanitizeHtml() erneut per
+			// DOM geparst wird. ENT_QUOTES decodierte &quot;/&#34; in Attributen
+			// (z. B. <blockquote data-instgrm-permalink="…&#34;…">, oder Reste
+			// von Widget-Markup, das Readability unverändert übernommen hat)
+			// zurück in literale Anführungszeichen und riss damit dieselbe
+			// Attributgrenze auf wie bei den Pre-Readability-Decode-Aufrufen oben
+			// (siehe dortiger Kommentar) — mit demselben Resultat: der Rest des
+			// Attributwerts rutschte als kaputtes Markup/Text in den extrahierten
+			// Content. ENT_NOQUOTES decodiert weiterhin named/numeric Entities in
+			// sichtbarem Text, lässt Quote-Entities aber unangetastet.
+			$content = html_entity_decode($content, ENT_NOQUOTES, 'UTF-8');
 
 			//$excerpt = $readability->getExcerpt();
 			//$excerpt = html_entity_decode($excerpt, ENT_QUOTES, 'UTF-8');
