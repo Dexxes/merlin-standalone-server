@@ -87,9 +87,15 @@ require_once __DIR__ . '/partials/icons.php';
     <p id="a-excerpt" class="article-excerpt" style="display:none;"></p>
     <div id="a-meta" class="article-meta"></div>
     <div id="a-tags" class="article-tags"></div>
+    <div id="video-player" data-hl-exclude style="display:none;">
+        <video id="video-player-el" controls playsinline></video>
+        <select id="video-player-variant" class="video-player-variant" style="display:none;"></select>
+    </div>
     <div id="article-body"></div>
 </article>
 
+<!-- Lokal vendored (kein Laufzeit-CDN), siehe public/js/vendor/README.md -->
+<script src="<?= url('/js/vendor/hls.min.js') ?>"></script>
 <script>
 const I18N = <?= json_encode($t->forJs([
     'articleReader.removeHighlight',
@@ -156,6 +162,20 @@ if (!document.getElementById('merlin-hl-style')) {
     document.head.appendChild(hlStyle);
 }
 
+// data-hl-exclude: siehe #video-player weiter unten - setupVideoPlayer()
+// verschiebt dieses Element bei nativ abspielbaren Artikeln (ARD/ZDF/Arte)
+// live in #article-body hinein (direkt hinter das Hero-Bild), obwohl es nicht
+// Teil des rohen article.content ist, gegen den XPaths plattformübergreifend
+// (iOS/nextcloud) berechnet werden. Ohne diesen Ausschluss würde es bei
+// Content mit Top-Level-<div>-Blöcken (z. B. .merlin-infobox) hinter dem
+// Hero-Bild die div[n]-Zählung verschieben - siehe merlin-nextclouds
+// highlight-engine.js für dieselbe Problemklasse (dort per data-hl-flatten/
+// data-hl-exclude gelöst, hier reicht ein reiner Ausschluss, da es keinen
+// Hero/Rest-Split gibt).
+function isExcluded(el) {
+    return el.nodeType === Node.ELEMENT_NODE && el.hasAttribute('data-hl-exclude');
+}
+
 function getXPathForNode(node, root) {
     if (node === root) return '.';
     const parts = [];
@@ -174,7 +194,7 @@ function getXPathForNode(node, root) {
             let index = 1;
             let sib = current.previousElementSibling;
             while (sib) {
-                if (sib.nodeName.toLowerCase() === tag) index++;
+                if (sib.nodeName.toLowerCase() === tag && !isExcluded(sib)) index++;
                 sib = sib.previousElementSibling;
             }
             parts.unshift(tag + '[' + index + ']');
@@ -211,7 +231,7 @@ function resolveXPath(xpath, root) {
             let count = 0;
             let found = null;
             for (const child of node.children) {
-                if (child.nodeName.toLowerCase() === tag) {
+                if (child.nodeName.toLowerCase() === tag && !isExcluded(child)) {
                     if (count === idx) { found = child; break; }
                     count++;
                 }
@@ -550,6 +570,249 @@ function applyFontSize() {
     document.getElementById('article-body').style.fontSize = size + 'px';
 }
 
+// Über innerHTML eingefügte <script>-Tags werden vom Browser NIE ausgeführt
+// (Standardverhalten, unabhängig vom Framework - dasselbe gilt für v-html in
+// merlin-nextclouds ArticleReader.vue). Der Sanitizer lässt aber genau zwei
+// <script>-Tags durch (isAllowedWidgetScriptSrc() im Backend: Instagrams
+// embed.js, X' widgets.js), die das zugehörige <blockquote> erst zum
+// Post/Reel rendern - ohne diesen Schritt bliebe für immer nur der
+// Zitat-Fallback stehen. Jedes gefundene <script> wird deshalb durch eine
+// neu erzeugte Kopie ersetzt; nur DAS bringt den Browser dazu, es
+// auszuführen.
+// Native ARD-/ZDF-/Arte-Wiedergabe über deren interne Stream-APIs, siehe
+// VideoStreamResolverService-Docblock (Backend) für den Hintergrund - das
+// ist bewusst kein offizieller Embed-Weg. Bleibt bei jedem Fehlschlag
+// (nicht auflösbar, Netzwerkfehler, Wiedergabefehler) einfach versteckt;
+// der Artikeltext darunter ist davon nie betroffen.
+const NATIVE_VIDEO_HOSTS = ['ardmediathek.de', 'zdf.de', 'arte.tv'];
+let activeHls = null;
+let currentVariants = [];
+
+function hasNativeVideoHost(articleUrl) {
+    let host;
+    try {
+        host = new URL(articleUrl).hostname.toLowerCase();
+    } catch {
+        return false;
+    }
+    return NATIVE_VIDEO_HOSTS.some(domain => host === domain || host.endsWith('.' + domain));
+}
+
+// #video-player lebt statisch als Geschwister VOR #article-body im Template
+// (siehe article-root oben), NICHT als dessen Kind - würde es dort drinstehen,
+// risse das nächste "article-body.innerHTML = ..." (neuer Artikel) es beim
+// Reset mit weg, und getElementById('video-player') liefe danach ins Leere.
+// resetVideoPlayerPosition() garantiert deshalb VOR jedem innerHTML-Reset
+// diese sichere Ausgangsposition; positionVideoPlayer() darf ihn danach
+// beliebig innerhalb von #article-body verschieben (siehe renderArticle()).
+function resetVideoPlayerPosition() {
+    const player = document.getElementById('video-player');
+    const body = document.getElementById('article-body');
+    if (player.nextElementSibling !== body) {
+        body.parentElement.insertBefore(player, body);
+    }
+}
+
+// Das Hero-Bild (siehe ContentExtractorService Step 12, .merlin-hero-image)
+// wird redundant, sobald es als Video-Poster dient statt separat über dem
+// Player zu stehen - siehe positionVideoPlayer()/teardownVideoPlayer().
+function setHeroImageVisible(visible) {
+    const hero = document.querySelector('#article-body > .merlin-hero-image');
+    if (hero) hero.style.display = visible ? '' : 'none';
+}
+
+// Platziert den Player direkt hinter dem Hero-Bild (siehe
+// ContentExtractorService Step 12, .merlin-hero-image), falls vorhanden -
+// sonst bleibt er an seiner statischen Position vor #article-body. Das
+// Hero-Bild selbst wird dabei zum Video-Poster statt zusätzlich separat
+// angezeigt zu werden.
+function positionVideoPlayer() {
+    const player = document.getElementById('video-player');
+    const video = document.getElementById('video-player-el');
+    const body = document.getElementById('article-body');
+    const hero = body.firstElementChild;
+    if (hero && hero.classList.contains('merlin-hero-image')) {
+        video.poster = hero.querySelector('img')?.src || '';
+        setHeroImageVisible(false);
+        hero.insertAdjacentElement('afterend', player);
+    } else {
+        video.poster = '';
+        body.parentElement.insertBefore(player, body);
+    }
+}
+
+// Der "Zum Video"-Fallback-Link (siehe ContentExtractorService, Video-Zweig)
+// wird redundant, sobald der native Player erfolgreich lädt.
+function setFallbackLinkVisible(visible) {
+    document.querySelectorAll('#article-body .merlin-video-fallback-link').forEach(el => {
+        el.style.display = visible ? '' : 'none';
+    });
+}
+
+function teardownVideoPlayer() {
+    if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+    }
+    document.getElementById('video-player').style.display = 'none';
+    document.getElementById('video-player-variant').style.display = 'none';
+    document.getElementById('video-player-el').poster = '';
+    currentVariants = [];
+    setFallbackLinkVisible(true);
+    setHeroImageVisible(true);
+}
+
+// Baut die Dropdown-Optionen aus den vom Backend gelieferten Varianten (z. B.
+// Standard vs. Gebärdensprache/Audiodeskription bei ARD/ZDF) - nur sichtbar,
+// wenn es tatsächlich mehr als eine gibt, sonst wäre die Auswahl bedeutungslos.
+function populateVideoVariantSelect(variants, selectedIndex) {
+    const select = document.getElementById('video-player-variant');
+    select.innerHTML = '';
+    if (variants.length <= 1) {
+        select.style.display = 'none';
+        return;
+    }
+    variants.forEach((variant, index) => {
+        const option = document.createElement('option');
+        option.value = String(index);
+        option.textContent = variant.label;
+        select.appendChild(option);
+    });
+    select.value = String(selectedIndex);
+    select.style.display = 'block';
+}
+
+// Pendant zur hls.subtitleTrack-Steuerung in attachVideoStream() unten,
+// für den Safari-Zweig ohne hls.js: hier gibt es keinen
+// SubtitleTrackController, der direkte Änderungen an video.textTracks
+// überschreiben könnte, also reicht das Setzen von .mode direkt.
+function enforceNativeSubtitleLanguage(video, subtitleLanguage) {
+    if (subtitleLanguage === undefined) return;
+    const apply = () => {
+        for (let i = 0; i < video.textTracks.length; i++) {
+            const track = video.textTracks[i];
+            if (track.kind !== 'subtitles' && track.kind !== 'captions') continue;
+            track.mode = subtitleLanguage && track.language === subtitleLanguage ? 'showing' : 'disabled';
+        }
+    };
+    apply();
+    video.textTracks.addEventListener('addtrack', apply);
+}
+
+function attachVideoStream(variant, { resumeAt = 0, autoplay = false } = {}) {
+    const video = document.getElementById('video-player-el');
+    const streamUrl = variant.url;
+
+    const seekAndPlay = () => {
+        if (resumeAt > 0) video.currentTime = resumeAt;
+        if (autoplay) video.play().catch(() => {});
+    };
+
+    // Safari unterstützt HLS nativ über <video src>, alle anderen gängigen
+    // Browser brauchen hls.js (MediaSource-basiert).
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        if (resumeAt > 0 || autoplay) {
+            video.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+        }
+        // Kein hls.js hier (natives Safari-HLS) - die Untertitelspur direkt
+        // am <video>-Element erzwingen, siehe enforceNativeSubtitleLanguage().
+        enforceNativeSubtitleLanguage(video, variant.subtitleLanguage);
+        return;
+    }
+
+    if (typeof Hls === 'undefined' || !Hls.isSupported()) {
+        teardownVideoPlayer();
+        return;
+    }
+
+    const hls = new Hls();
+    activeHls = hls;
+    hls.on(Hls.Events.ERROR, (event, errData) => {
+        if (errData.fatal) teardownVideoPlayer();
+    });
+    if (resumeAt > 0 || autoplay) {
+        hls.on(Hls.Events.MANIFEST_PARSED, seekAndPlay);
+    }
+    // Jedes Arte-Versions-Manifest bettet trotzdem mehrere Untertitel-Spuren
+    // ein statt nur die zur gewählten Version passende - hls.js wählt sonst
+    // selbstständig eine davon (u. a. nach Systemsprache), unabhängig von
+    // der im Dropdown gewählten Version. Über hls.js' eigene
+    // subtitleTrack-API statt direkt am <video>-Element setzen, da hls.js'
+    // SubtitleTrackController eine direkte DOM-Manipulation sonst wieder
+    // überschreiben würde. "und"/kein Wert (siehe
+    // VideoStreamResolverService::resolveArte()) bedeutet "keine Untertitel
+    // für diese Version" - bei ARD/ZDF fehlt das Feld (undefined) und hier
+    // passiert bewusst nichts, um deren bisheriges Verhalten nicht zu
+    // verändern.
+    if (variant.subtitleLanguage !== undefined) {
+        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+            const match = hls.subtitleTracks.findIndex(track => track.lang === variant.subtitleLanguage);
+            hls.subtitleTrack = match;
+        });
+    }
+    hls.loadSource(streamUrl);
+    hls.attachMedia(video);
+
+    video.addEventListener('error', teardownVideoPlayer, { once: true });
+}
+
+function selectVideoVariant(index) {
+    const variant = currentVariants[index];
+    if (!variant) return;
+
+    // Abspielposition beim Varianten-Wechsel beibehalten (z. B. von
+    // Gebärdensprache auf Normal mitten im Video umschalten), statt wieder
+    // bei 0 zu beginnen.
+    const video = document.getElementById('video-player-el');
+    const resumeAt = video.currentTime || 0;
+    const wasPlaying = !video.paused;
+
+    if (activeHls) {
+        activeHls.destroy();
+        activeHls = null;
+    }
+    attachVideoStream(variant, { resumeAt, autoplay: wasPlaying });
+}
+
+document.getElementById('video-player-variant').addEventListener('change', event => {
+    selectVideoVariant(Number(event.target.value));
+});
+
+async function setupVideoPlayer(articleId, articleUrl) {
+    teardownVideoPlayer();
+    if (!hasNativeVideoHost(articleUrl)) return;
+
+    let data;
+    try {
+        const res = await fetch(basePath + '/api/articles/' + articleId + '/video-stream', { credentials: 'same-origin' });
+        data = await res.json();
+    } catch {
+        return;
+    }
+    if (!data?.available || data.type !== 'hls' || !Array.isArray(data.variants) || data.variants.length === 0) return;
+
+    currentVariants = data.variants;
+    const selectedIndex = Number.isInteger(data.defaultIndex) && data.variants[data.defaultIndex] ? data.defaultIndex : 0;
+
+    positionVideoPlayer();
+    document.getElementById('video-player').style.display = 'block';
+    setFallbackLinkVisible(false);
+    populateVideoVariantSelect(currentVariants, selectedIndex);
+
+    attachVideoStream(currentVariants[selectedIndex]);
+}
+
+function executeEmbedScripts() {
+    document.getElementById('article-body').querySelectorAll('script').forEach(oldScript => {
+        const newScript = document.createElement('script');
+        for (const attr of oldScript.attributes) {
+            newScript.setAttribute(attr.name, attr.value);
+        }
+        oldScript.replaceWith(newScript);
+    });
+}
+
 document.getElementById('btn-font').addEventListener('click', () => {
     const current = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10) || FONT_SIZE_STEPS[1];
     const idx = FONT_SIZE_STEPS.indexOf(current);
@@ -607,11 +870,19 @@ function renderArticle() {
 
     renderTagChips();
 
+    // #video-player muss VOR dem innerHTML-Reset wieder an seine sichere
+    // Ausgangsposition (Geschwister vor #article-body) - siehe
+    // resetVideoPlayerPosition()-Docblock.
+    resetVideoPlayerPosition();
+
     // Bewusst der einzige innerHTML-Einsatz mit ungeschütztem HTML: der Inhalt
     // wurde bereits serverseitig durch ContentExtractorService::sanitizeHtml()
-    // bereinigt (allowlist-basiert, iframe/script/… entfernt) - dieselbe
-    // Vertrauensgrenze wie v-html in merlin-nextclouds ArticleReader.vue.
+    // bereinigt (allowlist-basiert, nur bestimmte iframe-Hosts und exakt zwei
+    // <script>-Quellen bleiben erhalten) - dieselbe Vertrauensgrenze wie
+    // v-html in merlin-nextclouds ArticleReader.vue.
     document.getElementById('article-body').innerHTML = article.content || '';
+    executeEmbedScripts();
+    setupVideoPlayer(articleId, article.url);
     applyFontSize();
 
     document.getElementById('reader-status').style.display = 'none';

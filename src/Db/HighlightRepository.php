@@ -11,6 +11,22 @@ final class HighlightRepository {
     public function __construct(private readonly PDO $db) {
     }
 
+    /**
+     * @return array{count: int, bytes: int}
+     */
+    public function getStorageStats(int $userId): array {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(
+                LENGTH(CAST(highlighted_text AS BLOB)) + LENGTH(CAST(start_xpath AS BLOB)) +
+                LENGTH(CAST(end_xpath AS BLOB))
+            ), 0) AS bytes
+            FROM highlights WHERE user_id = :user_id"
+        );
+        $stmt->execute(['user_id' => $userId]);
+        $row = $stmt->fetch();
+        return ['count' => (int) $row['cnt'], 'bytes' => (int) $row['bytes']];
+    }
+
     public function findByArticleId(int $articleId, int $userId): array {
         $stmt = $this->db->prepare(
             'SELECT * FROM highlights WHERE article_id = :article_id AND user_id = :user_id ORDER BY created_at ASC'

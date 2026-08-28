@@ -107,6 +107,33 @@ final class ArticleController {
     }
 
     /**
+     * Stößt die Extraktion erneut an für einen Artikel, dessen erster
+     * Versuch fehlgeschlagen ist (z.B. wegen einer instabilen
+     * Internetverbindung beim Abruf der Quell-URL) - `content` bleibt in
+     * diesem Fall dauerhaft leer, `isProcessing` wird nach dem Fehlschlag
+     * bereits zurückgesetzt (siehe scheduleExtraction()), es gibt sonst
+     * keinen automatischen Retry. Der Client zeigt dafür einen
+     * "Erneut versuchen"-Button im leeren Lesezustand.
+     */
+    public function retryExtraction(Request $request): Response {
+        $id = (int) $request->routeParam('id');
+        $userId = $request->authUserId();
+        $article = $this->articles->find($id, $userId);
+        if ($article === null) {
+            return Response::json(['error' => 'Not found'], 404);
+        }
+        if ((bool) $article['is_processing']) {
+            // Schon eine Extraktion unterwegs - nichts doppelt anstoßen.
+            return Response::json($this->withTags($article));
+        }
+
+        $this->articles->setProcessing($id);
+        $this->scheduleExtraction($id, $article['url'], $userId);
+
+        return Response::json($this->withTags($this->articles->find($id, $userId)));
+    }
+
+    /**
      * Extraktion läuft nach fastcgi_finish_request() weiter, damit der
      * Client sofort eine Antwort bekommt (Platzhalter-Artikel, isProcessing).
      * Siehe merlin-nextcloud/lib/Controller/ArticleController.php:209-264.

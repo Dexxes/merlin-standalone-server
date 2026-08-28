@@ -17,6 +17,7 @@ use Merlin\Controller\TagController;
 use Merlin\Controller\TtsController;
 use Merlin\Controller\UserContentFilterController;
 use Merlin\Controller\UserSettingsController;
+use Merlin\Controller\VideoStreamController;
 use Merlin\Http\Middleware\AdminOnlyMiddleware;
 use Merlin\Http\Middleware\AuthMiddleware;
 use Merlin\Http\Request;
@@ -43,7 +44,7 @@ $pages = new PageController(
     $app->apiTokenService(),
     $app->userSettings(),
 );
-$account = new AccountController($app->apiTokenRepository(), $app->apiTokenService());
+$account = new AccountController($app->apiTokenRepository(), $app->apiTokenService(), $app->articles(), $app->highlights());
 $admin = new AdminController($app->users(), $app->settings(), $app->passwordHasher(), $app->contentFilterRepository(), $app->siteCredentialRepository());
 $articles = new ArticleController($app->articles(), $app->tags(), $app->contentExtractor(), $app->exportService(), $app->logger());
 $contentFilters = new ContentFilterController(
@@ -69,6 +70,7 @@ $loginFlow = new LoginFlowController($app->loginFlows(), $app->users());
 $userSettings = new UserSettingsController($app->userSettings());
 $share = new ShareController($app->articles(), $app->articleShares());
 $tts = new TtsController($app->articles(), $app->ttsStream());
+$videoStream = new VideoStreamController($app->articles(), $app->videoStreamResolver());
 $publicShare = new PublicShareController(
     $app->articleShares(),
     $app->articles(),
@@ -152,6 +154,7 @@ $router->add('PUT', '/api/articles/{id}/favorite', $articles->toggleFavorite(...
 $router->add('PUT', '/api/articles/{id}/archive', $articles->toggleArchive(...), [$auth->handle(...)]);
 $router->add('PUT', '/api/articles/{id}/progress', $articles->updateProgress(...), [$auth->handle(...)]);
 $router->add('GET', '/api/articles/{id}/export/html', $articles->exportHtml(...), [$auth->handle(...)]);
+$router->add('POST', '/api/articles/{id}/retry-extraction', $articles->retryExtraction(...), [$auth->handle(...)]);
 
 // Tag-API
 $router->add('GET', '/api/tags', $tags->index(...), [$auth->handle(...)]);
@@ -170,6 +173,9 @@ $router->add('DELETE', '/api/highlights/{id}', $highlights->destroy(...), [$auth
 $router->add('GET', '/api/settings', $userSettings->get(...), [$auth->handle(...)]);
 $router->add('PUT', '/api/settings', $userSettings->update(...), [$auth->handle(...)]);
 
+// Speicherverbrauch (für iOS-Einstellungen: DB-Speicher pro Nutzer)
+$router->add('GET', '/api/storage', $account->storageUsage(...), [$auth->handle(...)]);
+
 // Share-API (authentifiziert - Verwaltung eigener Share-Links)
 $router->add('GET', '/api/articles/{articleId}/share', $share->show(...), [$auth->handle(...)]);
 $router->add('POST', '/api/articles/{articleId}/share', $share->create(...), [$auth->handle(...)]);
@@ -179,6 +185,9 @@ $router->add('DELETE', '/api/articles/{articleId}/share', $share->destroy(...), 
 
 // TTS-API (authentifiziert)
 $router->add('GET', '/api/articles/{id}/tts', $tts->synthesize(...), [$auth->handle(...)]);
+
+// Native ARD/ZDF/Arte-Stream-Auflösung (siehe VideoStreamResolverService-Docblock)
+$router->add('GET', '/api/articles/{id}/video-stream', $videoStream->resolve(...), [$auth->handle(...)]);
 
 // Public Share (unauthentifiziert - öffentliche Ansicht eines geteilten Artikels)
 $router->add('GET', '/s/{token}', $publicShare->show(...));
