@@ -213,6 +213,19 @@ final class ArticleRepository {
     }
 
     /**
+     * Markiert einen Artikel wieder als "in Bearbeitung" - genutzt beim
+     * manuellen Retry einer zuvor fehlgeschlagenen Extraktion (siehe
+     * ArticleController::retryExtraction()), damit der Client wieder auf
+     * `isProcessing` pollt statt den permanent leeren Inhalt anzuzeigen.
+     */
+    public function setProcessing(int $id): void {
+        $stmt = $this->db->prepare(
+            'UPDATE articles SET is_processing = 1, updated_at = :updated_at WHERE id = :id'
+        );
+        $stmt->execute(['id' => $id, 'updated_at' => gmdate('c')]);
+    }
+
+    /**
      * Signalisiert, dass die Extraktion an einer Paywall gescheitert ist, für
      * die der Nutzer keine (gültigen) Zugangsdaten hinterlegt hat - siehe
      * Service\Login\PaywallLoginRequiredException. requires_login_domain !==
