@@ -44,7 +44,7 @@ $pages = new PageController(
     $app->apiTokenService(),
     $app->userSettings(),
 );
-$account = new AccountController($app->apiTokenRepository(), $app->apiTokenService());
+$account = new AccountController($app->apiTokenRepository(), $app->apiTokenService(), $app->articles(), $app->highlights());
 $admin = new AdminController($app->users(), $app->settings(), $app->passwordHasher(), $app->contentFilterRepository(), $app->siteCredentialRepository());
 $articles = new ArticleController($app->articles(), $app->tags(), $app->contentExtractor(), $app->exportService(), $app->logger());
 $contentFilters = new ContentFilterController(
@@ -171,6 +171,9 @@ $router->add('DELETE', '/api/highlights/{id}', $highlights->destroy(...), [$auth
 // Settings-API (Settings-Sync)
 $router->add('GET', '/api/settings', $userSettings->get(...), [$auth->handle(...)]);
 $router->add('PUT', '/api/settings', $userSettings->update(...), [$auth->handle(...)]);
+
+// Speicherverbrauch (für iOS-Einstellungen: DB-Speicher pro Nutzer)
+$router->add('GET', '/api/storage', $account->storageUsage(...), [$auth->handle(...)]);
 
 // Share-API (authentifiziert - Verwaltung eigener Share-Links)
 $router->add('GET', '/api/articles/{articleId}/share', $share->show(...), [$auth->handle(...)]);

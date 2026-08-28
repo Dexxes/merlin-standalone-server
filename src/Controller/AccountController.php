@@ -6,6 +6,8 @@ namespace Merlin\Controller;
 
 use Merlin\Auth\ApiTokenService;
 use Merlin\Db\ApiTokenRepository;
+use Merlin\Db\ArticleRepository;
+use Merlin\Db\HighlightRepository;
 use Merlin\Http\Request;
 use Merlin\Http\Response;
 
@@ -13,6 +15,8 @@ final class AccountController {
     public function __construct(
         private readonly ApiTokenRepository $tokens,
         private readonly ApiTokenService $tokenService,
+        private readonly ArticleRepository $articles,
+        private readonly HighlightRepository $highlights,
     ) {
     }
 
@@ -38,5 +42,23 @@ final class AccountController {
         $id = (int) $request->routeParam('id');
         $revoked = $this->tokens->revoke($id, $request->authUserId());
         return $revoked ? Response::noContent() : Response::json(['error' => 'Not found'], 404);
+    }
+
+    /**
+     * Speicherverbrauch des Nutzers in der Datenbank (Artikel- + Highlight-
+     * Textspalten), für die "Speicher"-Anzeige in den iOS-Einstellungen.
+     */
+    public function storageUsage(Request $request): Response {
+        $userId = $request->authUserId();
+        $articles = $this->articles->getStorageStats($userId);
+        $highlights = $this->highlights->getStorageStats($userId);
+
+        return Response::json([
+            'articleCount' => $articles['count'],
+            'highlightCount' => $highlights['count'],
+            'articleBytes' => $articles['bytes'],
+            'highlightBytes' => $highlights['bytes'],
+            'totalBytes' => $articles['bytes'] + $highlights['bytes'],
+        ]);
     }
 }

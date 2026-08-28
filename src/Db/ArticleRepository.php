@@ -97,6 +97,29 @@ final class ArticleRepository {
         return $stmt->fetchAll();
     }
 
+    /**
+     * Summiert die Bytegröße aller Textspalten der Artikel eines Nutzers
+     * (LENGTH(CAST(... AS BLOB)) liefert in SQLite die Bytelänge statt der
+     * Zeichenanzahl - relevant bei Umlauten/Emoji im Artikeltext). Dient der
+     * Speicherverbrauchs-Anzeige in den iOS-Einstellungen.
+     *
+     * @return array{count: int, bytes: int}
+     */
+    public function getStorageStats(int $userId): array {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) AS cnt, COALESCE(SUM(
+                LENGTH(CAST(title AS BLOB)) + LENGTH(CAST(content AS BLOB)) +
+                LENGTH(CAST(COALESCE(excerpt, '') AS BLOB)) + LENGTH(CAST(COALESCE(author, '') AS BLOB)) +
+                LENGTH(CAST(COALESCE(site_name, '') AS BLOB)) + LENGTH(CAST(url AS BLOB)) +
+                LENGTH(CAST(COALESCE(image_url, '') AS BLOB))
+            ), 0) AS bytes
+            FROM articles WHERE user_id = :user_id"
+        );
+        $stmt->execute(['user_id' => $userId]);
+        $row = $stmt->fetch();
+        return ['count' => (int) $row['cnt'], 'bytes' => (int) $row['bytes']];
+    }
+
     public function getCounts(int $userId): array {
         $stmt = $this->db->prepare(
             'SELECT is_read, is_favorite, is_archived, category FROM articles WHERE user_id = :user_id'
