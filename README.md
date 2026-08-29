@@ -19,7 +19,7 @@ codebases with no shared data.
 | [`merlin-standalone-server`](https://github.com/Dexxes/merlin-standalone-server) | Standalone server (backend, no Nextcloud) | PHP 8.4, no framework, PDO/SQLite |
 | [`merlin-ios`](https://github.com/Dexxes/merlin-ios) | iOS 18+ | Swift 6, SwiftUI, AVFoundation, SPM |
 | `merlin-ipad` (unreleased) | iPadOS 15+ | like iOS (own, lower deployment target) |
-| `merlin-android` (unreleased) | Android 6.0+ (minSdk 23, target 34) | Kotlin, Jetpack Compose  |
+| [`merlin-android`](https://github.com/Dexxes/merlin-android) | Android 6.0+ (minSdk 23, target 34) | Kotlin, Jetpack Compose  |
 | [`merlin-firefox`](https://github.com/Dexxes/merlin-firefox) | Firefox | JS/WebExtension |
 | `merlin-chrome` (unreleased) | Chrome/Edge | JS/WebExtension |
 | [`merlin-thunderbird`](https://github.com/Dexxes/merlin-thunderbird) | Thunderbird 115+ | JS |
