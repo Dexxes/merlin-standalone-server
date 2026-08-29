@@ -107,7 +107,7 @@ check('Extraktion setzt isProcessing zurück', ((int) $extracted['is_processing'
 check('Extraktion setzt den Titel', $extracted['title'] === 'Ein Testartikel');
 
 $counts = $articles->getCounts((int) $user['id']);
-check('Counts zählen nur eigene Artikel', $counts['total'] === 1);
+check('Counts zählen nur eigene Artikel', $counts['pages']['total'] === 1);
 
 $highlight = $highlights->create($articleId, (int) $user['id'], [
     'highlightedText' => 'wichtiger Satz',

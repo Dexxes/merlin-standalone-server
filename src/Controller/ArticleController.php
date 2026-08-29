@@ -45,6 +45,17 @@ final class ArticleController {
             'category' => $request->query('category'),
         ], fn($value) => $value !== null);
 
+        // contentType=page/video: Seiten/Videos-Aufteilung auf oberster Ebene,
+        // orthogonal zu isRead/isFavorite/isArchived. "video" ist gleichbedeutend
+        // mit category=Video; "page" ist alles andere (category ungleich Video).
+        $contentType = $request->query('contentType');
+        if ($contentType === 'video') {
+            $filters['category'] = 'Video';
+        } elseif ($contentType === 'page') {
+            unset($filters['category']);
+            $filters['not_category'] = 'Video';
+        }
+
         $rows = $this->articles->findAll(
             $userId,
             $filters,
