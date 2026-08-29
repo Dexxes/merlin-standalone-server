@@ -53,6 +53,10 @@ final class ArticleRepository {
             $sql .= ' AND a.category = :category';
             $params['category'] = $filters['category'];
         }
+        if (isset($filters['not_category'])) {
+            $sql .= ' AND (a.category IS NULL OR a.category != :not_category)';
+            $params['not_category'] = $filters['not_category'];
+        }
 
         // Favoriten-Ansicht: chronologisch nach Favorisierungszeitpunkt sortieren.
         // Archiv-Ansicht: nach Archivierungszeitpunkt. Sonst: nach Erstellungsdatum.
@@ -126,30 +130,34 @@ final class ArticleRepository {
         );
         $stmt->execute(['user_id' => $userId]);
 
-        $total = 0;
-        $unread = 0;
-        $favorites = 0;
-        $archived = 0;
+        // Seiten/Videos sind die obersten Kategorien (category = "Video" oder
+        // nicht), Unread/Favorites/Archived darunter je Kategorie gezählt -
+        // siehe getCounts() in merlin-nextcloud/lib/Db/ArticleMapper.php.
+        $counts = [
+            'pages' => ['total' => 0, 'unread' => 0, 'favorites' => 0, 'archived' => 0],
+            'videos' => ['total' => 0, 'unread' => 0, 'favorites' => 0, 'archived' => 0],
+        ];
 
         foreach ($stmt->fetchAll() as $row) {
+            $group = $row['category'] === 'Video' ? 'videos' : 'pages';
             $isArchived = (bool) (int) $row['is_archived'];
             $read = (bool) (int) $row['is_read'];
             $favorite = $row['is_favorite'] !== null;
 
             if ($isArchived) {
-                $archived++;
+                $counts[$group]['archived']++;
             } else {
-                $total++;
+                $counts[$group]['total']++;
                 if (!$read) {
-                    $unread++;
+                    $counts[$group]['unread']++;
                 }
             }
             if ($favorite) {
-                $favorites++;
+                $counts[$group]['favorites']++;
             }
         }
 
-        return ['total' => $total, 'unread' => $unread, 'favorites' => $favorites, 'archived' => $archived];
+        return $counts;
     }
 
     public function insertPlaceholder(int $userId, string $url, string $title, string $siteName): int {

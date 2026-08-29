@@ -40,10 +40,15 @@
             <aside class="lib-side">
                 <span class="lib-kicker"><?= htmlspecialchars($t->t('library.viewLabel'), ENT_QUOTES, 'UTF-8') ?></span>
                 <div class="lib-facets" id="views">
-                    <a class="lib-facet" data-view="unread" href="?view=unread"><span><?= htmlspecialchars($t->t('library.viewUnread'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="unread"></span></a>
-                    <a class="lib-facet" data-view="favorites" href="?view=favorites"><span><?= htmlspecialchars($t->t('library.viewFavorites'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="favorites"></span></a>
-                    <a class="lib-facet" data-view="archive" href="?view=archive"><span><?= htmlspecialchars($t->t('library.viewArchive'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="archived"></span></a>
-                    <a class="lib-facet" data-view="all" href="?view=all"><span><?= htmlspecialchars($t->t('library.viewAll'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="total"></span></a>
+                    <span class="lib-facet-group"><?= htmlspecialchars($t->t('library.viewPages'), ENT_QUOTES, 'UTF-8') ?></span>
+                    <a class="lib-facet" data-view="pages-unread" href="?view=pages-unread"><span><?= htmlspecialchars($t->t('library.viewUnread'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="pages.unread"></span></a>
+                    <a class="lib-facet" data-view="pages-favorites" href="?view=pages-favorites"><span><?= htmlspecialchars($t->t('library.viewFavorites'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="pages.favorites"></span></a>
+                    <a class="lib-facet" data-view="pages-archive" href="?view=pages-archive"><span><?= htmlspecialchars($t->t('library.viewArchive'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="pages.archived"></span></a>
+
+                    <span class="lib-facet-group"><?= htmlspecialchars($t->t('library.viewVideos'), ENT_QUOTES, 'UTF-8') ?></span>
+                    <a class="lib-facet" data-view="videos-unread" href="?view=videos-unread"><span><?= htmlspecialchars($t->t('library.viewUnseen'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="videos.unread"></span></a>
+                    <a class="lib-facet" data-view="videos-favorites" href="?view=videos-favorites"><span><?= htmlspecialchars($t->t('library.viewFavorites'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="videos.favorites"></span></a>
+                    <a class="lib-facet" data-view="videos-archive" href="?view=videos-archive"><span><?= htmlspecialchars($t->t('library.viewArchive'), ENT_QUOTES, 'UTF-8') ?></span><span data-count="videos.archived"></span></a>
                 </div>
 
                 <span class="lib-kicker"><?= htmlspecialchars($t->t('library.tagsLabel'), ENT_QUOTES, 'UTF-8') ?></span>
@@ -100,7 +105,7 @@ const I18N = <?= json_encode($t->forJs([
 const dateLocale = document.documentElement.lang === 'en' ? 'en-US' : 'de-DE';
 
 const params = new URLSearchParams(location.search);
-let view = params.get('view') || 'unread';
+let view = params.get('view') || 'pages-unread';
 let tagId = params.get('tagId') ? Number(params.get('tagId')) : null;
 let sort = 'newest';
 let searchTerm = '';
@@ -112,11 +117,13 @@ let loaded = [];
 
 function viewFilterParams(v) {
     switch (v) {
-        case 'unread': return { isRead: 'false', isArchived: 'false' };
-        case 'favorites': return { isFavorite: 'true' };
-        case 'archive': return { isArchived: 'true' };
-        case 'all':
-        default: return { isArchived: 'false' };
+        case 'pages-unread': return { contentType: 'page', isRead: 'false', isArchived: 'false' };
+        case 'pages-favorites': return { contentType: 'page', isFavorite: 'true' };
+        case 'pages-archive': return { contentType: 'page', isArchived: 'true' };
+        case 'videos-unread': return { contentType: 'video', isRead: 'false', isArchived: 'false' };
+        case 'videos-favorites': return { contentType: 'video', isFavorite: 'true' };
+        case 'videos-archive': return { contentType: 'video', isArchived: 'true' };
+        default: return { contentType: 'page', isRead: 'false', isArchived: 'false' };
     }
 }
 
@@ -461,7 +468,7 @@ async function loadCounts() {
     const res = await fetch(basePath + '/api/articles/counts', { credentials: 'same-origin' });
     const counts = await res.json();
     document.querySelectorAll('#views [data-count]').forEach(el => {
-        const value = counts[el.dataset.count];
+        const value = el.dataset.count.split('.').reduce((obj, key) => (obj === undefined ? undefined : obj[key]), counts);
         el.textContent = value === undefined ? '' : String(value);
     });
 }

@@ -399,6 +399,14 @@ img.lib-thumb { background: #e4eaf0; }
 .lib-side .lib-facets + .lib-kicker { margin-top: 26px; }
 
 .lib-facets { display: flex; flex-direction: column; gap: 1px; }
+.lib-facet-group {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ind-muted);
+    padding: 6px 10px 2px;
+}
+.lib-facet-group:not(:first-child) { margin-top: 14px; }
 .lib-facet {
     display: flex;
     justify-content: space-between;
