@@ -254,8 +254,8 @@ final class ArticleController {
         $id = (int) $request->routeParam('id');
         $userId = $request->authUserId();
 
-        $progress = (float) $request->input('scrollProgress', '0');
-        $updatedAt = (int) $request->input('scrollUpdatedAt', '0');
+        $progress = (float) $request->input('progress', '0');
+        $updatedAt = (int) $request->input('updatedAt', '0');
 
         $article = $this->articles->find($id, $userId);
         if ($article === null) {
