@@ -34,6 +34,37 @@ final class TtsStreamService {
     }
 
     /**
+     * Prüft, ob der Piper-Daemon konfiguriert und aktuell erreichbar ist -
+     * für den Capabilities-Endpunkt (Clients fragen nach dem Login ab, ob
+     * server-seitig Vorlesen verfügbar ist, statt es beim ersten Versuch
+     * per 503 zu entdecken). Der Daemon hat keinen dedizierten
+     * Health-Endpunkt, daher genügt jede HTTP-Antwort auf dem Root-Pfad als
+     * Nachweis, dass der Prozess läuft und Verbindungen annimmt - der
+     * konkrete Statuscode (auch 404) ist dafür irrelevant. Kurzer
+     * Connect-Timeout, damit /api/capabilities nicht spürbar hängt, wenn
+     * der Daemon down ist.
+     */
+    public function isAvailable(): bool {
+        if ($this->daemonUrl === '') {
+            return false;
+        }
+
+        $ch = curl_init($this->daemonUrl . '/');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_NOBODY => true,
+            CURLOPT_TIMEOUT => 2,
+            CURLOPT_CONNECTTIMEOUT => 2,
+        ]);
+
+        curl_exec($ch);
+        $curlErr = curl_errno($ch);
+        curl_close($ch);
+
+        return $curlErr === 0;
+    }
+
+    /**
      * Extrahiert Text aus dem Artikel, spricht ihn per Piper-Daemon und
      * streamt das Ergebnis direkt als MP3 an den Client. Beendet den
      * PHP-Prozess selbst per exit() - läuft daher NIE normal zurück.

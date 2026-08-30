@@ -6,6 +6,7 @@ use Merlin\App;
 use Merlin\Controller\AccountController;
 use Merlin\Controller\AdminController;
 use Merlin\Controller\ArticleController;
+use Merlin\Controller\CapabilitiesController;
 use Merlin\Controller\ContentFilterController;
 use Merlin\Controller\HighlightController;
 use Merlin\Controller\LoginFlowController;
@@ -70,6 +71,7 @@ $loginFlow = new LoginFlowController($app->loginFlows(), $app->users());
 $userSettings = new UserSettingsController($app->userSettings());
 $share = new ShareController($app->articles(), $app->articleShares());
 $tts = new TtsController($app->articles(), $app->ttsStream());
+$capabilities = new CapabilitiesController($app->ttsStream());
 $videoStream = new VideoStreamController($app->articles(), $app->videoStreamResolver());
 $publicShare = new PublicShareController(
     $app->articleShares(),
@@ -172,6 +174,10 @@ $router->add('DELETE', '/api/highlights/{id}', $highlights->destroy(...), [$auth
 // Settings-API (Settings-Sync)
 $router->add('GET', '/api/settings', $userSettings->get(...), [$auth->handle(...)]);
 $router->add('PUT', '/api/settings', $userSettings->update(...), [$auth->handle(...)]);
+
+// Capabilities-API (Clients fragen dies nach dem Login ab, um optionale
+// Funktionen wie Vorlesen ein-/auszublenden)
+$router->add('GET', '/api/capabilities', $capabilities->index(...), [$auth->handle(...)]);
 
 // Speicherverbrauch (für iOS-Einstellungen: DB-Speicher pro Nutzer)
 $router->add('GET', '/api/storage', $account->storageUsage(...), [$auth->handle(...)]);
