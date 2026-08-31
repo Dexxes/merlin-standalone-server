@@ -150,7 +150,7 @@ final class UserContentFilterController {
         if ($urlDomain === '') {
             return $this->error($t->t('cfApi.urlNoHostname'), 400);
         }
-        if ($urlDomain !== $domain) {
+        if (!$this->repository->domainMatchesFilterKey($urlDomain, $domain)) {
             return $this->error(
                 $t->t('cfApi.urlDomainMismatch', ['urlDomain' => $urlDomain, 'domain' => $domain]),
                 400
