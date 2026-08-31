@@ -83,6 +83,12 @@ final class ContentFilterRepository implements DomainConfigProvider {
 	// Domain-Validierung
 	// ──────────────────────────────────────────────────────────────────────────
 
+	/**
+	 * @see merlin-nextcloud ContentFilterRepository::isValidDomain
+	 *
+	 * Ein optionales führendes "_." markiert eine Wildcard-Domain (Ersatz für
+	 * "*.", das im Dateisystem nicht als Dateiname zulässig ist).
+	 */
 	public function isValidDomain(string $domain): bool {
 		if ($domain === '' || strlen($domain) > 253) {
 			return false;
@@ -90,15 +96,40 @@ final class ContentFilterRepository implements DomainConfigProvider {
 		if ($domain !== strtolower($domain)) {
 			return false;
 		}
+		$base = str_starts_with($domain, '_.') ? substr($domain, 2) : $domain;
 		return preg_match(
 			'/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/',
-			$domain
+			$base
 		) === 1;
 	}
 
 	public function normalizeUrlDomain(string $url): string {
 		$host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
 		return (string) preg_replace('/^www\./i', '', $host);
+	}
+
+	/** @see merlin-nextcloud ContentFilterRepository::domainMatchesFilterKey */
+	public function domainMatchesFilterKey(string $urlDomain, string $filterDomain): bool {
+		if ($urlDomain === $filterDomain) {
+			return true;
+		}
+		if (!str_starts_with($filterDomain, '_.')) {
+			return false;
+		}
+		return str_ends_with($urlDomain, '.' . substr($filterDomain, 2));
+	}
+
+	/**
+	 * @see merlin-nextcloud ContentFilterRepository::lookupCandidates
+	 * @return list<string>
+	 */
+	private function lookupCandidates(string $domain): array {
+		$candidates = [$domain];
+		$labels     = explode('.', $domain);
+		for ($i = 1; $i < count($labels) - 1; $i++) {
+			$candidates[] = '_.' . implode('.', array_slice($labels, $i));
+		}
+		return $candidates;
 	}
 
 	/**
@@ -258,14 +289,31 @@ final class ContentFilterRepository implements DomainConfigProvider {
 			return $this->mergedCache[$cacheKey];
 		}
 
-		$bundle      = $this->readBundle($domain);
-		$adminCustom = $this->readAdminCustom($domain);
-		$userCustom  = $userId !== null && $userId !== '' ? $this->readUserCustom($domain, (int) $userId) : null;
+		$candidates  = $this->lookupCandidates($domain);
+		$bundle      = $this->firstNonNull($candidates, fn (string $c) => $this->readBundle($c));
+		$adminCustom = $this->firstNonNull($candidates, fn (string $c) => $this->readAdminCustom($c));
+		$userCustom  = $userId !== null && $userId !== ''
+			? $this->firstNonNull($candidates, fn (string $c) => $this->readUserCustom($c, (int) $userId))
+			: null;
 
 		$withAdminXml = $this->mergeBundleAndAdmin($bundle, $adminCustom, $domain);
 		$final        = $this->mergeWithUser($withAdminXml, $userCustom, $domain);
 
 		return $this->mergedCache[$cacheKey] = $final;
+	}
+
+	/**
+	 * @param list<string> $candidates
+	 * @param callable(string): ?string $read
+	 */
+	private function firstNonNull(array $candidates, callable $read): ?string {
+		foreach ($candidates as $candidate) {
+			$value = $read($candidate);
+			if ($value !== null) {
+				return $value;
+			}
+		}
+		return null;
 	}
 
 	/**

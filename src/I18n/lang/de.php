@@ -117,7 +117,7 @@ return [
     'contentFilters.colOrigin' => 'Herkunft',
     'contentFilters.colSection' => 'Sektion',
     'contentFilters.delete' => 'Löschen',
-    'contentFilters.domainPlaceholder' => 'z.B. example.com',
+    'contentFilters.domainPlaceholder' => 'z.B. example.com oder *.example.com',
     'contentFilters.editButton' => 'Bearbeiten',
     'contentFilters.lineLabel' => 'Zeile',
     'contentFilters.noTitle' => '(kein Titel)',

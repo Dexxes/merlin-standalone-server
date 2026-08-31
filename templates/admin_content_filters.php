@@ -60,6 +60,20 @@ const I18N = <?= json_encode($t->forJs([
 let filters = [];
 let currentDomain = null;
 
+// "*." ist im Dateisystem kein zulässiges Dateinamenszeichen (Bundle-Filter
+// liegen als <domain>.xml) - die API erwartet die Wildcard-Domain deshalb als
+// "_.<basis>" (z. B. "_.beehive.com" für "*.beehive.com"). Diese beiden
+// Funktionen übersetzen an der einzigen Stelle, an der Nutzer den Domainnamen
+// eingeben bzw. angezeigt bekommen.
+function toBackendDomain(input) {
+    const trimmed = String(input || '').trim().toLowerCase();
+    return trimmed.startsWith('*.') ? '_.' + trimmed.slice(2) : trimmed;
+}
+
+function displayDomain(domain) {
+    return domain.startsWith('_.') ? '*.' + domain.slice(2) : domain;
+}
+
 async function loadFilters() {
     const res = await fetch(basePath + '/api/admin/content-filters', { credentials: 'same-origin' });
     const data = await res.json();
@@ -79,7 +93,7 @@ function renderList() {
             f.hasCustom ? `<span class="badge">${I18N['adminCf.badgeCustom']}</span>` : '',
             f.userOverrideCount > 0 ? `<span class="badge">${I18N['adminCf.userOverrideBadge'].replace('{count}', f.userOverrideCount)}</span>` : '',
         ].join('');
-        tr.innerHTML = `<td>${f.domain}${badges}</td>`;
+        tr.innerHTML = `<td>${displayDomain(f.domain)}${badges}</td>`;
         tr.addEventListener('click', () => selectDomain(f.domain));
         body.appendChild(tr);
     }
@@ -92,7 +106,7 @@ async function selectDomain(domain) {
     const res = await fetch(basePath + '/api/admin/content-filters/' + encodeURIComponent(domain), { credentials: 'same-origin' });
     const detail = document.getElementById('cf-detail');
     detail.style.display = 'block';
-    document.getElementById('cf-detail-domain').textContent = domain;
+    document.getElementById('cf-detail-domain').textContent = displayDomain(domain);
     document.getElementById('cf-test-result').innerHTML = '';
     document.getElementById('cf-errors').style.display = 'none';
     document.getElementById('cf-export').href = basePath + '/api/admin/content-filters/' + encodeURIComponent(domain) + '/export';
@@ -109,7 +123,7 @@ async function selectDomain(domain) {
 }
 
 document.getElementById('cf-new-btn').addEventListener('click', () => {
-    const domain = document.getElementById('cf-new-domain').value.trim().toLowerCase();
+    const domain = toBackendDomain(document.getElementById('cf-new-domain').value);
     if (!domain) return;
     selectDomain(domain);
 });

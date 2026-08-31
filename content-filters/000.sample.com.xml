@@ -20,6 +20,27 @@
   Admin- und User-Custom liegen in der Datenbank (nicht mehr im Dateisystem) und sind
   damit automatisch Teil des normalen Nextcloud-DB-Backups.
 
+  ═══════════════════════════════════════════════════════════════════════════════
+  WILDCARD-DOMAINS  (*.beispiel.de)
+  ═══════════════════════════════════════════════════════════════════════════════
+  Für Anbieter, die ihren Kunden eigene Seiten per Subdomain bereitstellen (z. B.
+  kunde1.beehive.com, kunde2.beehive.com, ...), deckt EIN Filter die ganze Klasse
+  ab. Eingegeben wird die Domain mit führendem "*." (z. B. "*.beehive.com"); da
+  "*" kein zulässiges Dateinamenszeichen ist, heisst die Bundle-Datei stattdessen
+  content-filters/_.beehive.com.xml (auch Admin- und User-Custom-Ebene verwenden
+  intern "_." statt "*."). Die Admin- und Personal-Oberfläche übersetzen das beim
+  Eintippen automatisch.
+
+  Regeln:
+    · Trifft auf jede echte Subdomain (sub.beehive.com, a.b.beehive.com), NICHT
+      auf die nackte Basisdomain selbst (beehive.com) – wie bei TLS-Wildcard-
+      Zertifikaten. Braucht beehive.com selbst auch einen Filter, legt man dafür
+      zusätzlich einen eigenen Filter für "beehive.com" an.
+    · Ein exakter Filter für eine einzelne Subdomain (z. B. kunde1.beehive.com)
+      hat Vorrang vor dem Wildcard-Filter der Elterndomain.
+    · Wildcards gelten unabhängig je Ebene: Bundle-, Admin-Custom- und
+      User-Custom-Wildcards werden je für sich gesucht und normal gemergt.
+
   Zusammenführung:
     · Listen-Sektionen (pre-filter, post-filter, quotes, images) werden ergänzt;
       Custom-Regeln laufen NACH den Regeln der jeweils darunterliegenden Ebene.
