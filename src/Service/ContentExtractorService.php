@@ -2254,7 +2254,7 @@ class ContentExtractorService {
 			'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'del', 'ins', 'mark', 'small', 'sub', 'sup',
 			'a', 'blockquote', 'q', 'cite', 'code', 'pre', 'kbd', 'samp', 'var', 'abbr', 'time',
 			'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-			'img', 'figure', 'figcaption', 'picture', 'source',
+			'img', 'figure', 'figcaption', 'picture', 'source', 'video',
 			'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
 		];
 
@@ -2272,6 +2272,12 @@ class ContentExtractorService {
 			'a'          => ['href', 'target', 'rel'],
 			'img'        => ['src', 'alt', 'width', 'height'],
 			'source'     => ['src', 'type', 'media'],
+			// Moderne "GIF"-Ersätze (z. B. Ghost/Hugo-Blogs): stumme, per Attribut
+			// autoplayende/loopende <video>-Elemente, die self-hosted vom
+			// Quell-Server ausgeliefert werden (kein Embed eines Dritt-Players
+			// wie bei iframe) – daher ohne isAllowedVideoEmbedSrc()-Prüfung direkt
+			// auf $allowedTags, nur die Attribute laufen durch die Allowlist.
+			'video'      => ['src', 'poster', 'width', 'height', 'autoplay', 'loop', 'muted', 'playsinline', 'controls'],
 			'time'       => ['datetime'],
 			'td'         => ['colspan', 'rowspan'],
 			'th'         => ['colspan', 'rowspan', 'scope'],
