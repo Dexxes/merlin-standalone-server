@@ -347,9 +347,25 @@ class ContentExtractorService {
 			// so all Merlin marker classes survive post-processing.
 			$html = $this->normalizeQuotes($rawHtml, $domain, $trace);
 
+			// fivefilters/readability.php löst "./bild.jpg"-relative Bild-URLs im
+			// Artikeltext über PHP_URL_PATH + dirname() auf (Readability.php,
+			// getPathInfo()). Endet der Artikel-Pfad auf "/" — Standard bei
+			// Ghost-CMS-Blogs wie blog.joinmastodon.org (".../post-slug/") —,
+			// entfernt dirname() fälschlich das letzte Pfadsegment, sodass alle
+			// Absatzbilder auf eine falsche, 404ende URL aufgelöst werden (das
+			// meist root-relative og:image bleibt davon unbetroffen). Ein
+			// synthetisches Pfadsegment vor der Übergabe an Readability umgeht den
+			// Bug, ohne die Bibliothek zu patchen; Query/Fragment sind für die
+			// Pfadauflösung dort irrelevant und werden bewusst weggelassen.
+			$readabilityUrl = $url;
+			$urlPath = parse_url($url, PHP_URL_PATH) ?? '';
+			if ($urlPath !== '' && substr($urlPath, -1) === '/') {
+				$readabilityUrl = parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST) . rtrim($urlPath, '/') . '/index.html';
+			}
+
 			$readabilityConfig = new Configuration([
 				'fixRelativeURLs' => true,
-				'originalURL' => $url,
+				'originalURL' => $readabilityUrl,
 				'summonCthulhu' => true, // Remove unlikely candidates
 				// Keep class attributes so that Merlin-specific marker classes (e.g.
 				// merlin-infobox, merlin-quote) added before parsing survive intact.
@@ -2238,7 +2254,7 @@ class ContentExtractorService {
 			'strong', 'b', 'em', 'i', 'u', 's', 'strike', 'del', 'ins', 'mark', 'small', 'sub', 'sup',
 			'a', 'blockquote', 'q', 'cite', 'code', 'pre', 'kbd', 'samp', 'var', 'abbr', 'time',
 			'ul', 'ol', 'li', 'dl', 'dt', 'dd',
-			'img', 'figure', 'figcaption', 'picture', 'source',
+			'img', 'figure', 'figcaption', 'picture', 'source', 'video',
 			'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
 		];
 
@@ -2256,6 +2272,12 @@ class ContentExtractorService {
 			'a'          => ['href', 'target', 'rel'],
 			'img'        => ['src', 'alt', 'width', 'height'],
 			'source'     => ['src', 'type', 'media'],
+			// Moderne "GIF"-Ersätze (z. B. Ghost/Hugo-Blogs): stumme, per Attribut
+			// autoplayende/loopende <video>-Elemente, die self-hosted vom
+			// Quell-Server ausgeliefert werden (kein Embed eines Dritt-Players
+			// wie bei iframe) – daher ohne isAllowedVideoEmbedSrc()-Prüfung direkt
+			// auf $allowedTags, nur die Attribute laufen durch die Allowlist.
+			'video'      => ['src', 'poster', 'width', 'height', 'autoplay', 'loop', 'muted', 'playsinline', 'controls'],
 			'time'       => ['datetime'],
 			'td'         => ['colspan', 'rowspan'],
 			'th'         => ['colspan', 'rowspan', 'scope'],

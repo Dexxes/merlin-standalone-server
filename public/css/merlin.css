@@ -644,6 +644,12 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
 
 #article-body img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
 
+/* Self-hosted <video> im Artikeltext (GIF-Ersatz mancher Blogs, siehe
+   sanitizeHtml()) - nicht zu verwechseln mit #video-player-el weiter unten
+   (dem separaten nativen ARD/ZDF-Player). Ohne diese Regel rendert es in
+   seiner nativen Pixelbreite und sprengt die Artikelspalte. */
+#article-body video { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: var(--radius-sm); }
+
 /* Native ARD-/ZDF-/Arte-Wiedergabe (siehe VideoStreamResolverService). Feste
    Obergrenze statt voller Spaltenbreite: ohne max-width würde <video> beim
    Laden der echten (teils sehr großen) Videoauflösung unzentriert und
