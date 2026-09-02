@@ -347,9 +347,25 @@ class ContentExtractorService {
 			// so all Merlin marker classes survive post-processing.
 			$html = $this->normalizeQuotes($rawHtml, $domain, $trace);
 
+			// fivefilters/readability.php löst "./bild.jpg"-relative Bild-URLs im
+			// Artikeltext über PHP_URL_PATH + dirname() auf (Readability.php,
+			// getPathInfo()). Endet der Artikel-Pfad auf "/" — Standard bei
+			// Ghost-CMS-Blogs wie blog.joinmastodon.org (".../post-slug/") —,
+			// entfernt dirname() fälschlich das letzte Pfadsegment, sodass alle
+			// Absatzbilder auf eine falsche, 404ende URL aufgelöst werden (das
+			// meist root-relative og:image bleibt davon unbetroffen). Ein
+			// synthetisches Pfadsegment vor der Übergabe an Readability umgeht den
+			// Bug, ohne die Bibliothek zu patchen; Query/Fragment sind für die
+			// Pfadauflösung dort irrelevant und werden bewusst weggelassen.
+			$readabilityUrl = $url;
+			$urlPath = parse_url($url, PHP_URL_PATH) ?? '';
+			if ($urlPath !== '' && substr($urlPath, -1) === '/') {
+				$readabilityUrl = parse_url($url, PHP_URL_SCHEME) . '://' . parse_url($url, PHP_URL_HOST) . rtrim($urlPath, '/') . '/index.html';
+			}
+
 			$readabilityConfig = new Configuration([
 				'fixRelativeURLs' => true,
-				'originalURL' => $url,
+				'originalURL' => $readabilityUrl,
 				'summonCthulhu' => true, // Remove unlikely candidates
 				// Keep class attributes so that Merlin-specific marker classes (e.g.
 				// merlin-infobox, merlin-quote) added before parsing survive intact.
