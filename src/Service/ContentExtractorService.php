@@ -92,6 +92,7 @@ class ContentExtractorService {
 		LoggerInterface $logger,
 		DomainConfigProvider $domainConfig,
 		private SiteCredentialService $siteCredentials,
+		private BlueskyThreadResolverService $blueskyThreadResolver,
 	) {
 		$this->logger       = $logger;
 		$this->domainConfig = $domainConfig;
@@ -287,7 +288,7 @@ class ContentExtractorService {
 		// Rewrap domain-specific image+caption structures into standard
 		// <figure><img><figcaption> HTML so Readability preserves them.
 		// Must run before Readability; affects all images in the article body.
-		if($domainMeta['category'] != "Video")
+		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread")
 			$rawHtml = $this->normalizeImageCaptions($rawHtml, $domain, $trace);
 
 		// ── Step 4: Pre-filter ────────────────────────────────────────────────
@@ -336,7 +337,7 @@ class ContentExtractorService {
 		$siteName = $this->extractSiteName($rawHtml, $url);
 		$siteName = html_entity_decode($siteName ?? '', ENT_QUOTES, 'UTF-8');
 
-		if($domainMeta['category'] != "Video")
+		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread")
 		{
 			// ── Step 7: Quote normalisation + Readability ──────────────────────────
 			// Normalise quote structures before Readability:
@@ -408,6 +409,56 @@ class ContentExtractorService {
 				?: ($readability->getImage() ?: null)
 				?: ($heroImageData['src'] ?? null);
 			$publishedAt = $this->extractPublishedDate($html, $content);
+		}
+		elseif ($domainMeta['category'] === "Thread") {
+			// Self-Thread-Zweig (bsky.app, siehe BlueskyThreadResolverService):
+			// Readability wird übersprungen (bsky.app liefert als SPA praktisch
+			// keinen Server-Side-Content). Titel/Excerpt/Bild zunächst aus dem
+			// og:title/og:description/og:image-Fallback der bsky.app.xml
+			// (domainMeta, aus Step 2 oben) vorbelegen - das greift, wenn die
+			// API-Auflösung unten fehlschlägt.
+			$title       = $domainMeta['title'] ?? '';
+			$author      = null;
+			$imageUrl    = $domainMeta['image'] ?? null;
+			$publishedAt = null;
+
+			$threadPosts = $this->blueskyThreadResolver->resolveSelfThread($url);
+			if ($threadPosts !== null && $threadPosts !== []) {
+				$content   = $this->buildBlueskyThreadHtml($threadPosts);
+				$firstPost = $threadPosts[0];
+
+				$title  = $firstPost['text'] !== '' ? $this->truncateText($firstPost['text'], 80) : $title;
+				$excerpt = $this->truncateText($firstPost['text'], 300);
+				$author = $firstPost['authorDisplayName'] ?: ($firstPost['authorHandle'] ?: null);
+
+				$threadImage = null;
+				foreach ($threadPosts as $threadPost) {
+					if ($threadPost['imageUrl'] !== null) {
+						$threadImage = $threadPost['imageUrl'];
+						break;
+					}
+				}
+				$imageUrl = $threadImage ?? ($firstPost['authorAvatar'] ?? $imageUrl);
+
+				$publishedAt = $firstPost['createdAt'] !== '' ? $this->parseDateString($firstPost['createdAt']) : null;
+
+				// Diese Werte gelten für den ganzen Self-Thread (ältester Post) -
+				// nicht von Step 9 unten mit og:title/og:description/og:image der
+				// einzelnen VERLINKTEN Post-Seite überschreiben lassen, die bei
+				// einem mehrteiligen Thread nur einen Teilausschnitt zeigen.
+				$domainMeta['title']   = $title;
+				$domainMeta['excerpt'] = $excerpt;
+				$domainMeta['image']   = $imageUrl;
+			} else {
+				// API-Auflösung fehlgeschlagen (gelöschter Post, Rate-Limit,
+				// Netzwerkfehler) - einfacher Link-Fallback statt leerem Artikel.
+				// Titel/Excerpt/Bild bleiben der og:-Fallback von oben.
+				$escapedBlueskyUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+				$content = '<a href="' . $escapedBlueskyUrl . '" class="merlin-bluesky-fallback-link">Zum Bluesky-Post</a>';
+				if ($title === '') {
+					$title = 'Bluesky-Post';
+				}
+			}
 		}
 		else {
 			// $url in ein Attribut eingebettet → escapen, damit ein URL mit ' oder
@@ -488,6 +539,49 @@ class ContentExtractorService {
 			'publishedAt' => $publishedAt,
 			'category'    => $domainMeta['category'],
 		];
+	}
+
+	/**
+	 * Baut den Artikel-Content für einen Bluesky-Self-Thread: ein
+	 * Blueskys-offizielles Embed-<blockquote data-bluesky-uri="…"> je Post
+	 * (in chronologischer Reihenfolge), gefolgt vom offiziellen Loader-Script.
+	 * embed.bsky.app ersetzt jedes [data-bluesky-uri]-Element client-seitig
+	 * durch ein <iframe> mit dem echten, live gerenderten Post - der
+	 * Blockquote-Inhalt hier ist nur der No-JS-Fallback-Text.
+	 *
+	 * @param list<array{uri: string, cid: string, text: string, authorDid: string,
+	 *   authorHandle: string, authorDisplayName: ?string, authorAvatar: ?string,
+	 *   createdAt: string, imageUrl: ?string}> $posts
+	 */
+	private function buildBlueskyThreadHtml(array $posts): string {
+		$blocks = [];
+		foreach ($posts as $post) {
+			$escapedUri  = htmlspecialchars($post['uri'], ENT_QUOTES, 'UTF-8');
+			$escapedText = nl2br(htmlspecialchars($post['text'], ENT_QUOTES, 'UTF-8'));
+			$handle      = $post['authorHandle'] !== '' ? $post['authorHandle'] : 'bsky.app';
+			$permalink   = 'https://bsky.app/profile/' . rawurlencode($handle) . '/post/' . rawurlencode($this->rkeyFromAtUri($post['uri']));
+			$escapedPermalink = htmlspecialchars($permalink, ENT_QUOTES, 'UTF-8');
+			$escapedHandle    = htmlspecialchars($handle, ENT_QUOTES, 'UTF-8');
+
+			$blocks[] = '<blockquote class="bluesky-embed" data-bluesky-uri="' . $escapedUri . '">'
+				. '<p>' . $escapedText . '</p>'
+				. '&mdash; @' . $escapedHandle . ' <a href="' . $escapedPermalink . '">' . $escapedPermalink . '</a>'
+				. '</blockquote>';
+		}
+		$blocks[] = '<script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>';
+
+		return implode("\n", $blocks);
+	}
+
+	/** Letztes Pfadsegment einer at://-URI (die Record-Key/rkey). */
+	private function rkeyFromAtUri(string $atUri): string {
+		$parts = explode('/', $atUri);
+		return end($parts) ?: '';
+	}
+
+	private function truncateText(string $text, int $maxLen): string {
+		$text = trim($text);
+		return strlen($text) > $maxLen ? substr($text, 0, $maxLen) . '...' : $text;
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
@@ -2264,7 +2358,10 @@ class ContentExtractorService {
 			// data-instgrm-permalink/-version: Instagrams offizielles Embed-Markup
 			// (siehe isAllowedInstagramPermalink()). Ohne diese Attribute rendert
 			// embed.js nur einen leeren Platzhalter statt des Posts.
-			'blockquote' => ['data-instgrm-permalink', 'data-instgrm-version'],
+			// data-bluesky-uri: Blueskys offizielles Embed-Markup (siehe
+			// isAllowedBlueskyUri()) - analog für den Self-Thread-Zweig
+			// (BlueskyThreadResolverService/ContentExtractorService, category=Thread).
+			'blockquote' => ['data-instgrm-permalink', 'data-instgrm-version', 'data-bluesky-uri'],
 			// iframe steht bewusst NICHT auf $allowedTags (generisches iframe-Embed
 			// ist ein XSS-Vektor) – erlaubt sind nur Video-Embeds von vertrauens-
 			// würdigen Hosts, siehe isAllowedVideoEmbedSrc(). Deren Attribute laufen
@@ -2648,6 +2745,17 @@ class ContentExtractorService {
 					continue;
 				}
 			}
+
+			// Blueskys Embed-Markup trägt die Post-Identität als at://-URI in
+			// einem data-Attribut statt href/src – muss syntaktisch eine
+			// gültige app.bsky.feed.post-URI sein, siehe isAllowedBlueskyUri().
+			if ($tag === 'blockquote' && $lname === 'data-bluesky-uri') {
+				$value = trim($el->getAttribute($name));
+				if (!$this->isAllowedBlueskyUri($value)) {
+					$el->removeAttribute($name);
+					continue;
+				}
+			}
 		}
 
 		// Bei Links, die in einem neuen Tab geöffnet werden, rel härten
@@ -2695,7 +2803,7 @@ class ContentExtractorService {
 			. 'https://www.youtube.com https://www.youtube-nocookie.com '
 			. 'https://player.vimeo.com https://player.twitch.tv '
 			. 'https://www.tiktok.com https://www.facebook.com https://www.arte.tv '
-			. 'https://www.instagram.com https://platform.twitter.com';
+			. 'https://www.instagram.com https://platform.twitter.com https://embed.bsky.app';
 	}
 
 	private function isAllowedVideoEmbedSrc(string $src): bool {
@@ -2782,8 +2890,8 @@ class ContentExtractorService {
 	}
 
 	/**
-	 * true, wenn $src exakt einer der beiden offiziellen Widget-Loader von
-	 * Instagram/X ist. Bewusst als exakter String-Match (nicht nur Host/Pfad-
+	 * true, wenn $src exakt einer der offiziellen Widget-Loader von
+	 * Instagram/X/Bluesky ist. Bewusst als exakter String-Match (nicht nur Host/Pfad-
 	 * Präfix wie bei isAllowedVideoEmbedSrc()): anders als ein sandboxed
 	 * iframe läuft dieses Skript MIT vollem DOM-Zugriff auf der Reader-Seite,
 	 * daher hier die engstmögliche Fassung.
@@ -2794,9 +2902,9 @@ class ContentExtractorService {
 			return false;
 		}
 
-		// Instagram/X liefern ihren offiziellen Embed-Code oft protokollrelativ
-		// ("//www.instagram.com/embed.js") aus – vor dem exakten Match auf
-		// https normalisieren.
+		// Instagram/X/Bluesky liefern ihren offiziellen Embed-Code oft
+		// protokollrelativ ("//www.instagram.com/embed.js") aus – vor dem
+		// exakten Match auf https normalisieren.
 		if (str_starts_with($src, '//')) {
 			$src = 'https:' . $src;
 		}
@@ -2804,6 +2912,7 @@ class ContentExtractorService {
 		static $allowedScriptSrcs = [
 			'https://www.instagram.com/embed.js',
 			'https://platform.twitter.com/widgets.js',
+			'https://embed.bsky.app/static/embed.js',
 		];
 
 		return in_array($src, $allowedScriptSrcs, true);
@@ -2829,6 +2938,20 @@ class ContentExtractorService {
 		}
 
 		return in_array(strtolower($parts['host']), ['www.instagram.com', 'instagram.com'], true);
+	}
+
+	/**
+	 * true, wenn $uri eine syntaktisch gültige at://-URI eines
+	 * app.bsky.feed.post-Records ist. Für das data-bluesky-uri-Attribut von
+	 * Blueskys Embed-<blockquote>, siehe sanitizeAttributes() - dort ist der
+	 * eigentliche Vertrauensanker aber ohnehin, dass diese URIs ausschließlich
+	 * von uns selbst erzeugt werden (BlueskyThreadResolverService, aus einer
+	 * API-Antwort desselben public.api.bsky.app-Hosts), nicht aus Fremd-HTML.
+	 * Diese Prüfung ist Defense-in-Depth gegen ein verändertes/fehlerhaftes
+	 * Content-Filter-Custom (Admin-/User-Ebene), keine Vertrauensentscheidung.
+	 */
+	private function isAllowedBlueskyUri(string $uri): bool {
+		return preg_match('#^at://did:[a-z0-9]+:[A-Za-z0-9._:%-]+/app\.bsky\.feed\.post/[A-Za-z0-9._~-]+$#', $uri) === 1;
 	}
 
 	/**

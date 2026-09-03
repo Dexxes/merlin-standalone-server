@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: bsky.app
+  Kategorie: Thread - überspringt Readability komplett (bsky.app liefert als
+  Single-Page-App praktisch keinen Server-Side-HTML-Content). Stattdessen
+  löst BlueskyThreadResolverService den Post über die öffentliche AT-Protocol-
+  API auf und baut den Artikel-Inhalt aus Blueskys offiziellem Post-Embed
+  (embed.bsky.app) - siehe ContentExtractorService, Thread-Zweig.
+
+  Die <metadata>-Regeln unten greifen nur als Fallback, falls die
+  API-Auflösung fehlschlägt (z. B. gelöschter Post, Rate-Limit): Bluesky
+  rendert og:title/og:description/og:image serverseitig für Link-Previews,
+  auch ohne dass der Rest der Seite lädt.
+-->
+<domain name="bsky.app">
+
+  <category>Thread</category>
+
+  <pre-filter />
+  <post-filter />
+
+  <metadata>
+    <title    xpath="//meta[@property='og:title']/@content" />
+    <excerpt  xpath="//meta[@property='og:description']/@content" />
+    <image    xpath="//meta[@property='og:image']/@content" />
+  </metadata>
+
+</domain>
