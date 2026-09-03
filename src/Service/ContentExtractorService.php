@@ -1539,8 +1539,25 @@ class ContentExtractorService {
 
 		// <script>- und <style>-Tags (inkl. Inhalt) per RegEx entfernen, bevor der DOM-Parser
 		// den String verarbeitet. So werden auch komplexe JS-Inhalte mit <, >, & oder --
-		// zuverlässig entfernt, ohne dass sie den DOM-Baum beschädigen können.
-		$html = preg_replace('/<script\b[^>]*>.*?<\/script>/si', '', $html) ?? $html;
+		// zuverlässig entfernt, ohne dass sie den DOM-Baum beschädigen können. Ausnahme wie
+		// bei cleanHtml(): die offiziellen Widget-Loader von Instagram/X/Bluesky (siehe
+		// isAllowedWidgetScriptSrc()) überleben auch diesen - zeitlich früheren - Schritt,
+		// sonst würde er dasselbe Script wieder entfernen, das cleanHtml()/sanitizeHtml()
+		// weiter unten bewusst durchlassen (applyPostFilters() läuft VOR cleanHtml()).
+		$html = preg_replace_callback(
+			'/<script\b([^>]*)>(.*?)<\/script>/si',
+			function (array $m): string {
+				if (trim($m[2]) !== '') {
+					return '';
+				}
+				if (!preg_match('/\bsrc\s*=\s*(["\'])(.*?)\1/is', $m[1], $srcMatch)) {
+					return '';
+				}
+				$src = html_entity_decode($srcMatch[2], ENT_QUOTES, 'UTF-8');
+				return $this->isAllowedWidgetScriptSrc($src) ? $m[0] : '';
+			},
+			$html
+		) ?? $html;
 		$html = preg_replace('/<style\b[^>]*>.*?<\/style>/si',  '', $html) ?? $html;
 
 		$prev = libxml_use_internal_errors(true);
