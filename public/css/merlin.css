@@ -660,12 +660,32 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
    ContentExtractorService::isAllowedVideoEmbedSrc(). */
 #article-body iframe { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border: 0; margin: 1.3em 0; }
 
-/* Instagram-/X-Embeds (siehe isAllowedWidgetScriptSrc()) rendern sich nach dem
-   Laden ihres Widget-Skripts selbst neu und bringen ihr eigenes Kartendesign
-   mit - die generische Zitat-Optik oben würde nur bis zum Laden sichtbar sein
-   und dann falsch wirken, deshalb hier zurückgesetzt. */
+/* Instagram-/X-/Bluesky-Embeds (siehe isAllowedWidgetScriptSrc()) rendern sich
+   nach dem Laden ihres Widget-Skripts selbst neu und bringen ihr eigenes
+   Kartendesign mit - die generische Zitat-Optik oben würde nur bis zum Laden
+   sichtbar sein und dann falsch wirken, deshalb hier zurückgesetzt. */
 #article-body blockquote.instagram-media,
-#article-body blockquote.twitter-tweet { border-left: none; padding-left: 0; color: inherit; max-width: 100%; overflow: hidden; margin: 1.3em 0; }
+#article-body blockquote.twitter-tweet,
+#article-body blockquote.bluesky-embed { border-left: none; padding-left: 0; color: inherit; max-width: 100%; overflow: hidden; margin: 1.3em 0; }
+#article-body blockquote.bluesky-embed + blockquote.bluesky-embed { margin-top: 0.5em; }
+
+/* Mastodon-Post-Karte (siehe MastodonPostResolverService/
+   buildMastodonThreadHtml()): kein Drittanbieter-Widget wie Instagram/X/
+   Bluesky (föderiert, kein zentraler Embed-Host), sondern eigenes, statisches
+   Markup - braucht deshalb echtes Styling statt nur eines Platzhalter-Resets. */
+#article-body .merlin-mastodon-post { display: block; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1em 1.2em; margin: 1.2em 0; color: inherit; font-style: normal; }
+#article-body .merlin-mastodon-post + .merlin-mastodon-post { margin-top: 0.5em; }
+#article-body .merlin-mastodon-post__header { display: flex; align-items: center; gap: 0.6em; text-decoration: none; color: inherit; margin-bottom: 0.6em; }
+#article-body .merlin-mastodon-post__avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0; margin: 0; }
+#article-body .merlin-mastodon-post__author { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+#article-body .merlin-mastodon-post__name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#article-body .merlin-mastodon-post__handle { color: var(--text-muted); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#article-body .merlin-mastodon-post__content p { margin: 0.5em 0; }
+#article-body .merlin-mastodon-post__content p:first-child { margin-top: 0; }
+#article-body .merlin-mastodon-post__content p:last-child { margin-bottom: 0; }
+#article-body .merlin-mastodon-post__media { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5em; margin-top: 0.6em; }
+#article-body .merlin-mastodon-post__media-item { width: 100%; height: 160px; object-fit: cover; border-radius: var(--radius-sm); margin: 0; }
+
 #reader-status { color: var(--text-muted); }
 
 #password-gate form { margin-top: 1em; }

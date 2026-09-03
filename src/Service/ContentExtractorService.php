@@ -93,6 +93,7 @@ class ContentExtractorService {
 		DomainConfigProvider $domainConfig,
 		private SiteCredentialService $siteCredentials,
 		private BlueskyThreadResolverService $blueskyThreadResolver,
+		private MastodonPostResolverService $mastodonPostResolver,
 	) {
 		$this->logger       = $logger;
 		$this->domainConfig = $domainConfig;
@@ -284,11 +285,28 @@ class ContentExtractorService {
 		if(isset($domainMeta) && key_exists("except", $domainMeta) && strlen($domainMeta['excerpt']) > 300)
 			$domainMeta['excerpt'] = substr($domainMeta['excerpt'],0,300) . "...";
 
+		// ── Step 2b: Mastodon-Erkennung (domain-unabhängig) ───────────────────
+		// Mastodon ist föderiert - anders als bsky.app/x.com gibt es keine feste
+		// Domain, für die ein content-filters/{domain}.xml eine Kategorie
+		// deklarieren könnte. Erkennung deshalb rein über die URL-Form
+		// "/@user/12345…" (looksLikeMastodonPostUrl()), NUR wenn keine andere
+		// Domain-Config bereits eine eigene Kategorie zugewiesen hat (sonst
+		// hätte z. B. ein regulärer Blog mit zufällig passendem Pfad Vorrang
+		// vor seinem eigenen Content-Filter). $mastodonThreadPosts wird unten
+		// im Thread-Zweig wiederverwendet statt den API-Call zu wiederholen.
+		$mastodonThreadPosts = null;
+		if ($domainMeta['category'] === null && $this->mastodonPostResolver->looksLikeMastodonPostUrl($url)) {
+			$mastodonThreadPosts = $this->mastodonPostResolver->resolveSelfThread($url);
+			if ($mastodonThreadPosts !== null) {
+				$domainMeta['category'] = 'Mastodon';
+			}
+		}
+
 		// ── Step 3: Image caption normalisation ─────────────────────────────
 		// Rewrap domain-specific image+caption structures into standard
 		// <figure><img><figcaption> HTML so Readability preserves them.
 		// Must run before Readability; affects all images in the article body.
-		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread")
+		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread" && $domainMeta['category'] != "XPost" && $domainMeta['category'] != "Mastodon")
 			$rawHtml = $this->normalizeImageCaptions($rawHtml, $domain, $trace);
 
 		// ── Step 4: Pre-filter ────────────────────────────────────────────────
@@ -337,7 +355,7 @@ class ContentExtractorService {
 		$siteName = $this->extractSiteName($rawHtml, $url);
 		$siteName = html_entity_decode($siteName ?? '', ENT_QUOTES, 'UTF-8');
 
-		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread")
+		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread" && $domainMeta['category'] != "XPost" && $domainMeta['category'] != "Mastodon")
 		{
 			// ── Step 7: Quote normalisation + Readability ──────────────────────────
 			// Normalise quote structures before Readability:
@@ -460,6 +478,60 @@ class ContentExtractorService {
 				}
 			}
 		}
+		elseif ($domainMeta['category'] === "XPost") {
+			// Einzelpost-Embed (x.com/twitter.com, siehe content-filters/x.com.xml
+			// bzw. twitter.com.xml): kein API-Aufruf nötig/möglich - X hat keine
+			// kostenlose öffentliche API mehr, mit der sich eine Reply-Kette
+			// auflösen ließe. platform.twitter.com/widgets.js holt den
+			// Tweet-Inhalt clientseitig selbst über Twitters eigenes oEmbed -
+			// die Widget-Infrastruktur (Allowlist/CSP) existierte hier schon
+			// vor der Bluesky-Arbeit. Deshalb auch kein Self-Thread-Walk wie
+			// bei Bluesky/Mastodon, nur der einzelne verlinkte Post.
+			$xHandle = $this->parseXStatusHandle($url);
+			if ($xHandle !== null) {
+				$content = $this->buildXPostHtml($url);
+				$author  = '@' . $xHandle;
+				$title   = 'Post von ' . $author;
+			} else {
+				// Keine Status-URL (Profil/Suche/Startseite) - einfacher
+				// Link-Fallback statt eines falsch dargestellten Embeds.
+				$escapedXUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+				$content = '<a href="' . $escapedXUrl . '" class="merlin-x-fallback-link">Zum X-Post</a>';
+				$author  = null;
+				$title   = $domainMeta['title'] ?? 'X-Post';
+			}
+			$imageUrl    = $domainMeta['image'] ?? null;
+			$publishedAt = null;
+			$domainMeta['title'] = $title;
+		}
+		elseif ($domainMeta['category'] === "Mastodon") {
+			// Self-Thread-Zweig für föderierte Mastodon-Posts (siehe
+			// MastodonPostResolverService, domain-unabhängig oben in Step 2b
+			// erkannt) - $mastodonThreadPosts wurde dort schon aufgelöst,
+			// kein zweiter API-Call nötig. Anders als bsky.app/x.com gibt es
+			// keinen zentralen Embed-Host für alle Instanzen, deshalb eigene,
+			// native HTML-Karte statt eines Drittanbieter-Widgets (siehe
+			// buildMastodonThreadHtml()).
+			$content   = $this->buildMastodonThreadHtml($mastodonThreadPosts);
+			$firstPost = $mastodonThreadPosts[0];
+
+			$author = $firstPost['authorDisplayName'] ?: ($firstPost['authorHandle'] !== '' ? '@' . $firstPost['authorHandle'] : null);
+			$title  = $author !== null ? ('Post von ' . $author) : 'Mastodon-Post';
+
+			$threadImage = null;
+			foreach ($mastodonThreadPosts as $threadPost) {
+				if ($threadPost['imageUrls'] !== []) {
+					$threadImage = $threadPost['imageUrls'][0];
+					break;
+				}
+			}
+			$imageUrl = $threadImage ?? ($firstPost['authorAvatar'] ?? null);
+
+			$publishedAt = $firstPost['createdAt'] !== '' ? $this->parseDateString($firstPost['createdAt']) : null;
+
+			$domainMeta['title'] = $title;
+			$domainMeta['image'] = $imageUrl;
+		}
 		else {
 			// $url in ein Attribut eingebettet → escapen, damit ein URL mit ' oder
 			// " nicht aus dem href ausbricht. Der finale sanitizeHtml()-Durchlauf
@@ -564,6 +636,85 @@ class ContentExtractorService {
 				. '</blockquote>';
 		}
 		$blocks[] = '<script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>';
+
+		return implode("\n", $blocks);
+	}
+
+	/**
+	 * Handle aus einer x.com/twitter.com-Status-URL ("/handle/status/12345…"),
+	 * oder null wenn die URL keine Tweet-Permalink-Form hat (Profil, Suche,
+	 * Startseite, …). "/i/status/…" (Xs handle-loser Permalink-Kurzlink, z. B.
+	 * über "Copy link") liefert bewusst null zurück statt "i" als Handle -
+	 * "i" ist ein Platzhalter, kein Konto.
+	 */
+	private function parseXStatusHandle(string $url): ?string {
+		$path = parse_url($url, PHP_URL_PATH);
+		if (!is_string($path) || !preg_match('#^/([A-Za-z0-9_]{1,15})/status/\d+#', $path, $m)) {
+			return null;
+		}
+		return strcasecmp($m[1], 'i') === 0 ? null : $m[1];
+	}
+
+	/**
+	 * Blueskys Gegenstück, nur für X: ein offizielles Tweet-Embed-<blockquote>
+	 * (leerer <a href> genügt - platform.twitter.com/widgets.js holt sich den
+	 * Tweet-Inhalt selbst über Twitters eigenes oEmbed) + der Loader.
+	 */
+	private function buildXPostHtml(string $url): string {
+		$escapedUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+		return '<blockquote class="twitter-tweet"><a href="' . $escapedUrl . '"></a></blockquote>' . "\n"
+			. '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>';
+	}
+
+	/**
+	 * Baut den Artikel-Content für einen Mastodon-Self-Thread als eigene,
+	 * native HTML-Karte je Post (kein Drittanbieter-Widget - Mastodon-
+	 * Instanzen sind föderiert, es gibt keinen zentralen, allowlistbaren
+	 * Embed-Host wie embed.bsky.app/platform.twitter.com). contentHtml kommt
+	 * von der Mastodon-API und ist bereits einfaches HTML (Absätze, Mention-/
+	 * Hashtag-Links, ggf. Custom-Emoji-<img>s) - läuft wie jeder andere
+	 * extrahierte Content anschließend durch applyPostFilters()/cleanHtml()/
+	 * sanitizeHtml(), wird also nicht blind vertraut.
+	 *
+	 * @param list<array{id: string, url: string, contentHtml: string,
+	 *   authorDisplayName: ?string, authorHandle: string, authorAvatar: ?string,
+	 *   createdAt: string, imageUrls: list<string>}> $posts
+	 */
+	private function buildMastodonThreadHtml(array $posts): string {
+		$blocks = [];
+		foreach ($posts as $post) {
+			$displayName   = $post['authorDisplayName'] ?: $post['authorHandle'];
+			$escapedName   = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
+			$escapedHandle = htmlspecialchars($post['authorHandle'], ENT_QUOTES, 'UTF-8');
+			$escapedUrl    = htmlspecialchars($post['url'], ENT_QUOTES, 'UTF-8');
+
+			$avatarHtml = '';
+			if ($post['authorAvatar'] !== null) {
+				$escapedAvatar = htmlspecialchars($post['authorAvatar'], ENT_QUOTES, 'UTF-8');
+				$avatarHtml = '<img class="merlin-mastodon-post__avatar" src="' . $escapedAvatar . '" alt="">';
+			}
+
+			$mediaHtml = '';
+			foreach ($post['imageUrls'] as $mediaUrl) {
+				$escapedMedia = htmlspecialchars($mediaUrl, ENT_QUOTES, 'UTF-8');
+				$mediaHtml .= '<img class="merlin-mastodon-post__media-item" src="' . $escapedMedia . '" alt="">';
+			}
+			if ($mediaHtml !== '') {
+				$mediaHtml = '<div class="merlin-mastodon-post__media">' . $mediaHtml . '</div>';
+			}
+
+			$blocks[] = '<div class="merlin-mastodon-post">'
+				. '<a class="merlin-mastodon-post__header" href="' . $escapedUrl . '">'
+				. $avatarHtml
+				. '<span class="merlin-mastodon-post__author">'
+				. '<span class="merlin-mastodon-post__name">' . $escapedName . '</span>'
+				. '<span class="merlin-mastodon-post__handle">@' . $escapedHandle . '</span>'
+				. '</span>'
+				. '</a>'
+				. '<div class="merlin-mastodon-post__content">' . $post['contentHtml'] . '</div>'
+				. $mediaHtml
+				. '</div>';
+		}
 
 		return implode("\n", $blocks);
 	}

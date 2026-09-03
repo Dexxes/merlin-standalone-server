@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: x.com
+  Kategorie: XPost - überspringt Readability komplett (x.com liefert als
+  Single-Page-App praktisch keinen Server-Side-HTML-Content). Anders als
+  bsky.app/Mastodon kein Self-Thread-Walk: X hat keine kostenlose öffentliche
+  API mehr, mit der sich eine Reply-Kette auflösen ließe. Stattdessen ein
+  einzelnes offizielles Tweet-Embed (platform.twitter.com/widgets.js, holt
+  den Inhalt selbst client-seitig) - siehe ContentExtractorService,
+  XPost-Zweig.
+
+  Die <metadata>-Regeln unten greifen nur als Fallback, wenn die URL keine
+  Tweet-Permalink-Form hat (Profil, Suche, Startseite).
+-->
+<domain name="x.com">
+
+  <category>XPost</category>
+
+  <pre-filter />
+  <post-filter />
+
+  <metadata>
+    <title    xpath="//meta[@property='og:title']/@content" />
+    <image    xpath="//meta[@property='og:image']/@content" />
+  </metadata>
+
+</domain>
