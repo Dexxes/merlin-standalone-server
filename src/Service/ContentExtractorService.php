@@ -581,7 +581,11 @@ class ContentExtractorService {
 
 	private function truncateText(string $text, int $maxLen): string {
 		$text = trim($text);
-		return strlen($text) > $maxLen ? substr($text, 0, $maxLen) . '...' : $text;
+		// mb_-Varianten statt substr()/strlen(): Bluesky-Post-Text ist UTF-8 mit
+		// häufigen Mehrbyte-Zeichen (Umlaute, Gedankenstriche, Emoji). Byteweises
+		// substr() kann mittendrin in einem Mehrbyte-Zeichen abschneiden und eine
+		// kaputte UTF-8-Sequenz erzeugen, die die DB (SQLSTATE 22007/1366) ablehnt.
+		return mb_strlen($text, 'UTF-8') > $maxLen ? mb_substr($text, 0, $maxLen, 'UTF-8') . '...' : $text;
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
