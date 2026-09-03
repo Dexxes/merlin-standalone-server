@@ -200,6 +200,7 @@ final class App {
             $this->siteCredentialService(),
             $this->blueskyThreadResolver(),
             $this->mastodonPostResolver(),
+            (string) $this->config('base_url', ''),
         );
     }
 

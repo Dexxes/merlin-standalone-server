@@ -94,6 +94,7 @@ class ContentExtractorService {
 		private SiteCredentialService $siteCredentials,
 		private BlueskyThreadResolverService $blueskyThreadResolver,
 		private MastodonPostResolverService $mastodonPostResolver,
+		private string $baseUrl,
 	) {
 		$this->logger       = $logger;
 		$this->domainConfig = $domainConfig;
@@ -434,18 +435,19 @@ class ContentExtractorService {
 			// keinen Server-Side-Content). Titel zunächst aus dem og:title-
 			// Fallback der bsky.app.xml (domainMeta, aus Step 2 oben)
 			// vorbelegen - das greift, wenn die API-Auflösung unten
-			// fehlschlägt. Kein Excerpt, kein Vorschau-/Hero-Bild: weder
-			// bsky.app.xml noch dieser Zweig setzen je ein $imageUrl - der
-			// Post-Text steht schon vollständig im Embed selbst, statt eines
-			// Fotos gibt es das Plattform-Icon (siehe buildPlatformIconHtml()).
+			// fehlschlägt. Kein Excerpt: der Post-Text steht schon
+			// vollständig im Embed selbst. Statt eines Avatars/Fotos dient
+			// das Bluesky-Icon (platformIconUrl()) als Vorschaubild - kein
+			// Hero-Bild im Content selbst, siehe Step 12 unten
+			// (hideHeroImage-Ausnahme für Thread/XPost/Mastodon).
 			$title       = $domainMeta['title'] ?? '';
 			$author      = null;
-			$imageUrl    = null;
+			$imageUrl    = $this->platformIconUrl('bluesky');
 			$publishedAt = null;
 
 			$threadPosts = $this->blueskyThreadResolver->resolveSelfThread($url);
 			if ($threadPosts !== null && $threadPosts !== []) {
-				$content   = $this->buildPlatformIconHtml('bluesky') . $this->buildBlueskyThreadHtml($threadPosts);
+				$content   = $this->buildBlueskyThreadHtml($threadPosts);
 				$firstPost = $threadPosts[0];
 
 				$author = $firstPost['authorDisplayName'] ?: ($firstPost['authorHandle'] ?: null);
@@ -463,11 +465,12 @@ class ContentExtractorService {
 				// Netzwerkfehler) - einfacher Link-Fallback statt leerem Artikel.
 				// Titel bleibt der og:title-Fallback von oben.
 				$escapedBlueskyUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
-				$content = $this->buildPlatformIconHtml('bluesky') . '<a href="' . $escapedBlueskyUrl . '" class="merlin-bluesky-fallback-link">Zum Bluesky-Post</a>';
+				$content = '<a href="' . $escapedBlueskyUrl . '" class="merlin-bluesky-fallback-link">Zum Bluesky-Post</a>';
 				if ($title === '') {
 					$title = 'Bluesky-Post';
 				}
 			}
+			$domainMeta['image'] = $imageUrl;
 		}
 		elseif ($domainMeta['category'] === "XPost") {
 			// Einzelpost-Embed (x.com/twitter.com, siehe content-filters/x.com.xml
@@ -477,24 +480,25 @@ class ContentExtractorService {
 			// Tweet-Inhalt clientseitig selbst über Twitters eigenes oEmbed -
 			// die Widget-Infrastruktur (Allowlist/CSP) existierte hier schon
 			// vor der Bluesky-Arbeit. Deshalb auch kein Self-Thread-Walk wie
-			// bei Bluesky/Mastodon, nur der einzelne verlinkte Post. Kein
-			// Vorschau-/Hero-Bild, siehe Thread-Zweig oben.
+			// bei Bluesky/Mastodon, nur der einzelne verlinkte Post. Vorschaubild
+			// ist das X-Icon statt eines Avatars/Fotos, siehe Thread-Zweig oben.
 			$xHandle = $this->parseXStatusHandle($url);
 			if ($xHandle !== null) {
-				$content = $this->buildPlatformIconHtml('x') . $this->buildXPostHtml($url);
+				$content = $this->buildXPostHtml($url);
 				$author  = '@' . $xHandle;
 				$title   = 'Post von ' . $author;
 			} else {
 				// Keine Status-URL (Profil/Suche/Startseite) - einfacher
 				// Link-Fallback statt eines falsch dargestellten Embeds.
 				$escapedXUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
-				$content = $this->buildPlatformIconHtml('x') . '<a href="' . $escapedXUrl . '" class="merlin-x-fallback-link">Zum X-Post</a>';
+				$content = '<a href="' . $escapedXUrl . '" class="merlin-x-fallback-link">Zum X-Post</a>';
 				$author  = null;
 				$title   = $domainMeta['title'] ?? 'X-Post';
 			}
-			$imageUrl    = null;
+			$imageUrl    = $this->platformIconUrl('x');
 			$publishedAt = null;
 			$domainMeta['title'] = $title;
+			$domainMeta['image'] = $imageUrl;
 		}
 		elseif ($domainMeta['category'] === "Mastodon") {
 			// Self-Thread-Zweig für föderierte Mastodon-Posts (siehe
@@ -503,19 +507,20 @@ class ContentExtractorService {
 			// kein zweiter API-Call nötig. Anders als bsky.app/x.com gibt es
 			// keinen zentralen Embed-Host für alle Instanzen, deshalb eigene,
 			// native HTML-Karte statt eines Drittanbieter-Widgets (siehe
-			// buildMastodonThreadHtml()). Kein Vorschau-/Hero-Bild (weder
-			// Avatar noch Medien-Anhang) - Avatare innerhalb der Post-Karte
-			// selbst bleiben aber (Teil der Post-Darstellung, kein "Hero").
-			$content   = $this->buildPlatformIconHtml('mastodon') . $this->buildMastodonThreadHtml($mastodonThreadPosts);
+			// buildMastodonThreadHtml()). Vorschaubild ist das Mastodon-Icon
+			// statt eines Avatars/Medien-Anhangs - Avatare innerhalb der
+			// Post-Karte selbst bleiben aber (Teil der Post-Darstellung).
+			$content   = $this->buildMastodonThreadHtml($mastodonThreadPosts);
 			$firstPost = $mastodonThreadPosts[0];
 
 			$author = $firstPost['authorDisplayName'] ?: ($firstPost['authorHandle'] !== '' ? '@' . $firstPost['authorHandle'] : null);
 			$title  = $author !== null ? ('Post von ' . $author) : 'Mastodon-Post';
 
-			$imageUrl    = null;
+			$imageUrl    = $this->platformIconUrl('mastodon');
 			$publishedAt = $firstPost['createdAt'] !== '' ? $this->parseDateString($firstPost['createdAt']) : null;
 
 			$domainMeta['title'] = $title;
+			$domainMeta['image'] = $imageUrl;
 		}
 		else {
 			// $url in ein Attribut eingebettet → escapen, damit ein URL mit ' oder
@@ -556,8 +561,15 @@ class ContentExtractorService {
 		// wird das Bild als merlin-hero-image an den Anfang prepended.
 		// Eine vorhandene <figcaption> aus dem Quell-HTML wird mitübernommen.
 		// Das Bild darf so nur einmal erscheinen – stripDuplicateMetadata läuft danach.
+		// Bluesky/X/Mastodon: $imageUrl ist hier das feste Plattform-Icon
+		// (Vorschaubild in der Artikelliste, siehe platformIconUrl()), soll
+		// aber ausdrücklich NICHT zusätzlich als Hero-Bild im Content
+		// erscheinen - der Post/Thread/die Karte steht selbst schon ganz
+		// oben im Content.
+		$suppressHeroImage = in_array($domainMeta['category'], ['Thread', 'XPost', 'Mastodon'], true);
+
 		$start = mb_substr(trim($content), 0, 2000);
-		if ($normalizedImageUrl !== null && !preg_match('/<img\b/i', $start)) {
+		if ($normalizedImageUrl !== null && !$suppressHeroImage && !preg_match('/<img\b/i', $start)) {
 			$escapedUrl  = htmlspecialchars($normalizedImageUrl, ENT_QUOTES, 'UTF-8');
 			$figcaption  = '';
 			// Caption aus dem HTML-Scan übernehmen (nur wenn kein og:image die imageUrl
@@ -705,29 +717,16 @@ class ContentExtractorService {
 	}
 
 	/**
-	 * <path>-Daten der Plattform-Icons (Font Awesome Free, Brands-Set,
-	 * CC BY 4.0 - https://fontawesome.com/license/free), 640x640 viewBox.
-	 * Fest hinterlegte, server-eigene Konstanten - keine Content-Filter-XML
-	 * kann hierüber eigenes Markup einschleusen, siehe sanitizeHtml()'s
-	 * svg/path-Allowlist (bewusst eng: nur diese drei Bilder).
+	 * URL des statischen Plattform-Icons (16:9-PNG, transparenter
+	 * Hintergrund, unter public/img/{platform}-preview.png), das für
+	 * Bluesky-/X-/Mastodon-Artikel statt eines Avatars/Post-Fotos als
+	 * Vorschaubild dient (siehe Thread-/XPost-/Mastodon-Zweige oben).
+	 * $baseUrl kommt aus der Admin-Konfiguration (config('base_url'),
+	 * siehe App.php) - dasselbe Muster wie für andere selbstreferenzierende
+	 * absolute URLs in dieser Codebase (z. B. Password-Reset-Links).
 	 */
-	private const PLATFORM_ICON_PATHS = [
-		'bluesky'  => 'M439.8 358.7C436.5 358.3 433.1 357.9 429.8 357.4C433.2 357.8 436.5 358.3 439.8 358.7zM320 291.1C293.9 240.4 222.9 145.9 156.9 99.3C93.6 54.6 69.5 62.3 53.6 69.5C35.3 77.8 32 105.9 32 122.4C32 138.9 41.1 258 47 277.9C66.5 343.6 136.1 365.8 200.2 358.6C203.5 358.1 206.8 357.7 210.2 357.2C206.9 357.7 203.6 358.2 200.2 358.6C106.3 372.6 22.9 406.8 132.3 528.5C252.6 653.1 297.1 501.8 320 425.1C342.9 501.8 369.2 647.6 505.6 528.5C608 425.1 533.7 372.5 439.8 358.6C436.5 358.2 433.1 357.8 429.8 357.3C433.2 357.7 436.5 358.2 439.8 358.6C503.9 365.7 573.4 343.5 593 277.9C598.9 258 608 139 608 122.4C608 105.8 604.7 77.7 586.4 69.5C570.6 62.4 546.4 54.6 483.2 99.3C417.1 145.9 346.1 240.4 320 291.1z',
-		'x'        => 'M453.2 112L523.8 112L369.6 288.2L551 528L409 528L297.7 382.6L170.5 528L99.8 528L264.7 339.5L90.8 112L236.4 112L336.9 244.9L453.2 112zM428.4 485.8L467.5 485.8L215.1 152L173.1 152L428.4 485.8z',
-		'mastodon' => 'M529 243.1C529 145.9 465.3 117.4 465.3 117.4C402.8 88.7 236.7 89 174.8 117.4C174.8 117.4 111.1 145.9 111.1 243.1C111.1 358.8 104.5 502.5 216.7 532.2C257.2 542.9 292 545.2 320 543.6C370.8 540.8 399.3 525.5 399.3 525.5L397.6 488.6C397.6 488.6 361.3 500 320.5 498.7C280.1 497.3 237.5 494.3 230.9 444.7C230.3 440.1 230 435.4 230 430.8C315.6 451.7 388.7 439.9 408.7 437.5C464.8 430.8 513.7 396.2 519.9 364.6C529.7 314.8 528.9 243.1 528.9 243.1zM453.9 368.3L407.3 368.3L407.3 254.1C407.3 204.4 343.3 202.5 343.3 261L343.3 323.5L297 323.5L297 261C297 202.5 233 204.4 233 254.1L233 368.3L186.3 368.3C186.3 246.2 181.1 220.4 204.7 193.3C230.6 164.4 284.5 162.5 308.5 199.4L320.1 218.9L331.7 199.4C355.8 162.3 409.8 164.6 435.5 193.3C459.2 220.6 453.9 246.3 453.9 368.3L453.9 368.3z',
-	];
-
-	/**
-	 * Plattform-Icon statt Vorschau-/Hero-Bild für Bluesky-/X-/Mastodon-
-	 * Artikel (siehe Thread-/XPost-/Mastodon-Zweige oben): dort wird nie ein
-	 * $imageUrl gesetzt (kein Avatar/Post-Bild als Artikelbild), stattdessen
-	 * steht dieses Icon am Anfang des Contents.
-	 */
-	private function buildPlatformIconHtml(string $platform): string {
-		$path = self::PLATFORM_ICON_PATHS[$platform];
-		return '<div class="merlin-platform-icon merlin-platform-icon--' . $platform . '">'
-			. '<svg viewBox="0 0 640 640" xmlns="http://www.w3.org/2000/svg"><path d="' . $path . '"></path></svg>'
-			. '</div>';
+	private function platformIconUrl(string $platform): string {
+		return rtrim($this->baseUrl, '/') . '/img/' . $platform . '-preview.png';
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
@@ -2521,12 +2520,6 @@ class ContentExtractorService {
 			'ul', 'ol', 'li', 'dl', 'dt', 'dd',
 			'img', 'figure', 'figcaption', 'picture', 'source',
 			'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
-			// Nur für die fest hinterlegten Plattform-Icons (Bluesky/X/Mastodon,
-			// siehe buildPlatformIconHtml()) - keine Domain-Config kann eigene
-			// svg/path-Elemente einschleusen, dafür gibt es keine <svg>-Regel in
-			// der Content-Filter-Grammatik. Bewusst kein <script>/<foreignObject>
-			// o. Ä. auf der Liste.
-			'svg', 'path',
 		];
 
 		// Pro Tag erlaubte Attribute. Alles nicht Gelistete (insb. alle on*-Handler,
@@ -2565,12 +2558,6 @@ class ContentExtractorService {
 			// isAllowedWidgetScriptSrc(). Kein "onload" o. Ä. auf der Liste: das
 			// Element darf ausschließlich diese drei harmlosen Lade-Attribute tragen.
 			'script'     => ['src', 'async', 'charset'],
-			// Nur für die fest hinterlegten Plattform-Icons, siehe $allowedTags
-			// oben - keine externen Attribute (href, onload, …), kein "fill" auf
-			// dem Pfad (Farbe kommt bewusst per CSS/currentColor, folgt so
-			// automatisch Textfarbe/Dark-Mode statt eines eingebrannten Werts).
-			'svg'        => ['viewBox', 'xmlns'],
-			'path'       => ['d'],
 		];
 
 		$prev = libxml_use_internal_errors(true);
