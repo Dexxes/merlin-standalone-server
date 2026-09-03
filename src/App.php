@@ -32,6 +32,8 @@ use Merlin\Service\ExportService;
 use Merlin\Service\SiteCredentialService;
 use Merlin\Service\TtsStreamService;
 use Merlin\Service\VideoStreamResolverService;
+use Merlin\Service\BlueskyThreadResolverService;
+use Merlin\Service\MastodonPostResolverService;
 use PDO;
 use Psr\Log\LoggerInterface;
 
@@ -62,6 +64,8 @@ final class App {
     private ?SessionService $sessions = null;
     private ?ContentExtractorService $contentExtractor = null;
     private ?VideoStreamResolverService $videoStreamResolver = null;
+    private ?BlueskyThreadResolverService $blueskyThreadResolver = null;
+    private ?MastodonPostResolverService $mastodonPostResolver = null;
     private ?ExportService $exportService = null;
     private ?ContentFilterMerger $contentFilterMerger = null;
     private ?ContentFilterRepository $contentFilterRepository = null;
@@ -194,11 +198,22 @@ final class App {
             $this->logger(),
             $this->contentFilterRepository(),
             $this->siteCredentialService(),
+            $this->blueskyThreadResolver(),
+            $this->mastodonPostResolver(),
+            (string) $this->config('base_url', ''),
         );
     }
 
     public function videoStreamResolver(): VideoStreamResolverService {
         return $this->videoStreamResolver ??= new VideoStreamResolverService($this->logger());
+    }
+
+    public function blueskyThreadResolver(): BlueskyThreadResolverService {
+        return $this->blueskyThreadResolver ??= new BlueskyThreadResolverService($this->logger());
+    }
+
+    public function mastodonPostResolver(): MastodonPostResolverService {
+        return $this->mastodonPostResolver ??= new MastodonPostResolverService($this->logger());
     }
 
     public function credentialCipher(): CredentialCipher {

@@ -92,6 +92,9 @@ class ContentExtractorService {
 		LoggerInterface $logger,
 		DomainConfigProvider $domainConfig,
 		private SiteCredentialService $siteCredentials,
+		private BlueskyThreadResolverService $blueskyThreadResolver,
+		private MastodonPostResolverService $mastodonPostResolver,
+		private string $baseUrl,
 	) {
 		$this->logger       = $logger;
 		$this->domainConfig = $domainConfig;
@@ -283,11 +286,28 @@ class ContentExtractorService {
 		if(isset($domainMeta) && key_exists("except", $domainMeta) && strlen($domainMeta['excerpt']) > 300)
 			$domainMeta['excerpt'] = substr($domainMeta['excerpt'],0,300) . "...";
 
+		// ── Step 2b: Mastodon-Erkennung (domain-unabhängig) ───────────────────
+		// Mastodon ist föderiert - anders als bsky.app/x.com gibt es keine feste
+		// Domain, für die ein content-filters/{domain}.xml eine Kategorie
+		// deklarieren könnte. Erkennung deshalb rein über die URL-Form
+		// "/@user/12345…" (looksLikeMastodonPostUrl()), NUR wenn keine andere
+		// Domain-Config bereits eine eigene Kategorie zugewiesen hat (sonst
+		// hätte z. B. ein regulärer Blog mit zufällig passendem Pfad Vorrang
+		// vor seinem eigenen Content-Filter). $mastodonThreadPosts wird unten
+		// im Thread-Zweig wiederverwendet statt den API-Call zu wiederholen.
+		$mastodonThreadPosts = null;
+		if ($domainMeta['category'] === null && $this->mastodonPostResolver->looksLikeMastodonPostUrl($url)) {
+			$mastodonThreadPosts = $this->mastodonPostResolver->resolveSelfThread($url);
+			if ($mastodonThreadPosts !== null) {
+				$domainMeta['category'] = 'Mastodon';
+			}
+		}
+
 		// ── Step 3: Image caption normalisation ─────────────────────────────
 		// Rewrap domain-specific image+caption structures into standard
 		// <figure><img><figcaption> HTML so Readability preserves them.
 		// Must run before Readability; affects all images in the article body.
-		if($domainMeta['category'] != "Video")
+		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread" && $domainMeta['category'] != "XPost" && $domainMeta['category'] != "Mastodon")
 			$rawHtml = $this->normalizeImageCaptions($rawHtml, $domain, $trace);
 
 		// ── Step 4: Pre-filter ────────────────────────────────────────────────
@@ -336,7 +356,7 @@ class ContentExtractorService {
 		$siteName = $this->extractSiteName($rawHtml, $url);
 		$siteName = html_entity_decode($siteName ?? '', ENT_QUOTES, 'UTF-8');
 
-		if($domainMeta['category'] != "Video")
+		if($domainMeta['category'] != "Video" && $domainMeta['category'] != "Thread" && $domainMeta['category'] != "XPost" && $domainMeta['category'] != "Mastodon")
 		{
 			// ── Step 7: Quote normalisation + Readability ──────────────────────────
 			// Normalise quote structures before Readability:
@@ -409,6 +429,99 @@ class ContentExtractorService {
 				?: ($heroImageData['src'] ?? null);
 			$publishedAt = $this->extractPublishedDate($html, $content);
 		}
+		elseif ($domainMeta['category'] === "Thread") {
+			// Self-Thread-Zweig (bsky.app, siehe BlueskyThreadResolverService):
+			// Readability wird übersprungen (bsky.app liefert als SPA praktisch
+			// keinen Server-Side-Content). Titel zunächst aus dem og:title-
+			// Fallback der bsky.app.xml (domainMeta, aus Step 2 oben)
+			// vorbelegen - das greift, wenn die API-Auflösung unten
+			// fehlschlägt. Kein Excerpt: der Post-Text steht schon
+			// vollständig im Embed selbst. Statt eines Avatars/Fotos dient
+			// das Bluesky-Icon (platformIconUrl()) als Vorschaubild - kein
+			// Hero-Bild im Content selbst, siehe Step 12 unten
+			// (hideHeroImage-Ausnahme für Thread/XPost/Mastodon).
+			$title       = $domainMeta['title'] ?? '';
+			$author      = null;
+			$imageUrl    = $this->platformIconUrl('bluesky');
+			$publishedAt = null;
+
+			$threadPosts = $this->blueskyThreadResolver->resolveSelfThread($url);
+			if ($threadPosts !== null && $threadPosts !== []) {
+				$content   = $this->buildBlueskyThreadHtml($threadPosts);
+				$firstPost = $threadPosts[0];
+
+				$author = $firstPost['authorDisplayName'] ?: ($firstPost['authorHandle'] ?: null);
+				$title  = $author !== null ? ('Post von ' . $author) : $title;
+
+				$publishedAt = $firstPost['createdAt'] !== '' ? $this->parseDateString($firstPost['createdAt']) : null;
+
+				// Gilt für den ganzen Self-Thread (ältester Post) - nicht von
+				// Step 9 unten mit dem og:title der einzelnen VERLINKTEN
+				// Post-Seite überschreiben lassen, die bei einem mehrteiligen
+				// Thread nicht zum Autor des Threads passen muss.
+				$domainMeta['title'] = $title;
+			} else {
+				// API-Auflösung fehlgeschlagen (gelöschter Post, Rate-Limit,
+				// Netzwerkfehler) - einfacher Link-Fallback statt leerem Artikel.
+				// Titel bleibt der og:title-Fallback von oben.
+				$escapedBlueskyUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+				$content = '<a href="' . $escapedBlueskyUrl . '" class="merlin-bluesky-fallback-link">Zum Bluesky-Post</a>';
+				if ($title === '') {
+					$title = 'Bluesky-Post';
+				}
+			}
+			$domainMeta['image'] = $imageUrl;
+		}
+		elseif ($domainMeta['category'] === "XPost") {
+			// Einzelpost-Embed (x.com/twitter.com, siehe content-filters/x.com.xml
+			// bzw. twitter.com.xml): kein API-Aufruf nötig/möglich - X hat keine
+			// kostenlose öffentliche API mehr, mit der sich eine Reply-Kette
+			// auflösen ließe. platform.twitter.com/widgets.js holt den
+			// Tweet-Inhalt clientseitig selbst über Twitters eigenes oEmbed -
+			// die Widget-Infrastruktur (Allowlist/CSP) existierte hier schon
+			// vor der Bluesky-Arbeit. Deshalb auch kein Self-Thread-Walk wie
+			// bei Bluesky/Mastodon, nur der einzelne verlinkte Post. Vorschaubild
+			// ist das X-Icon statt eines Avatars/Fotos, siehe Thread-Zweig oben.
+			$xHandle = $this->parseXStatusHandle($url);
+			if ($xHandle !== null) {
+				$content = $this->buildXPostHtml($url);
+				$author  = '@' . $xHandle;
+				$title   = 'Post von ' . $author;
+			} else {
+				// Keine Status-URL (Profil/Suche/Startseite) - einfacher
+				// Link-Fallback statt eines falsch dargestellten Embeds.
+				$escapedXUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+				$content = '<a href="' . $escapedXUrl . '" class="merlin-x-fallback-link">Zum X-Post</a>';
+				$author  = null;
+				$title   = $domainMeta['title'] ?? 'X-Post';
+			}
+			$imageUrl    = $this->platformIconUrl('x');
+			$publishedAt = null;
+			$domainMeta['title'] = $title;
+			$domainMeta['image'] = $imageUrl;
+		}
+		elseif ($domainMeta['category'] === "Mastodon") {
+			// Self-Thread-Zweig für föderierte Mastodon-Posts (siehe
+			// MastodonPostResolverService, domain-unabhängig oben in Step 2b
+			// erkannt) - $mastodonThreadPosts wurde dort schon aufgelöst,
+			// kein zweiter API-Call nötig. Anders als bsky.app/x.com gibt es
+			// keinen zentralen Embed-Host für alle Instanzen, deshalb eigene,
+			// native HTML-Karte statt eines Drittanbieter-Widgets (siehe
+			// buildMastodonThreadHtml()). Vorschaubild ist das Mastodon-Icon
+			// statt eines Avatars/Medien-Anhangs - Avatare innerhalb der
+			// Post-Karte selbst bleiben aber (Teil der Post-Darstellung).
+			$content   = $this->buildMastodonThreadHtml($mastodonThreadPosts);
+			$firstPost = $mastodonThreadPosts[0];
+
+			$author = $firstPost['authorDisplayName'] ?: ($firstPost['authorHandle'] !== '' ? '@' . $firstPost['authorHandle'] : null);
+			$title  = $author !== null ? ('Post von ' . $author) : 'Mastodon-Post';
+
+			$imageUrl    = $this->platformIconUrl('mastodon');
+			$publishedAt = $firstPost['createdAt'] !== '' ? $this->parseDateString($firstPost['createdAt']) : null;
+
+			$domainMeta['title'] = $title;
+			$domainMeta['image'] = $imageUrl;
+		}
 		else {
 			// $url in ein Attribut eingebettet → escapen, damit ein URL mit ' oder
 			// " nicht aus dem href ausbricht. Der finale sanitizeHtml()-Durchlauf
@@ -448,8 +561,15 @@ class ContentExtractorService {
 		// wird das Bild als merlin-hero-image an den Anfang prepended.
 		// Eine vorhandene <figcaption> aus dem Quell-HTML wird mitübernommen.
 		// Das Bild darf so nur einmal erscheinen – stripDuplicateMetadata läuft danach.
+		// Bluesky/X/Mastodon: $imageUrl ist hier das feste Plattform-Icon
+		// (Vorschaubild in der Artikelliste, siehe platformIconUrl()), soll
+		// aber ausdrücklich NICHT zusätzlich als Hero-Bild im Content
+		// erscheinen - der Post/Thread/die Karte steht selbst schon ganz
+		// oben im Content.
+		$suppressHeroImage = in_array($domainMeta['category'], ['Thread', 'XPost', 'Mastodon'], true);
+
 		$start = mb_substr(trim($content), 0, 2000);
-		if ($normalizedImageUrl !== null && !preg_match('/<img\b/i', $start)) {
+		if ($normalizedImageUrl !== null && !$suppressHeroImage && !preg_match('/<img\b/i', $start)) {
 			$escapedUrl  = htmlspecialchars($normalizedImageUrl, ENT_QUOTES, 'UTF-8');
 			$figcaption  = '';
 			// Caption aus dem HTML-Scan übernehmen (nur wenn kein og:image die imageUrl
@@ -488,6 +608,125 @@ class ContentExtractorService {
 			'publishedAt' => $publishedAt,
 			'category'    => $domainMeta['category'],
 		];
+	}
+
+	/**
+	 * Baut den Artikel-Content für einen Bluesky-Self-Thread: ein
+	 * Blueskys-offizielles Embed-<blockquote data-bluesky-uri="…"> je Post
+	 * (in chronologischer Reihenfolge), gefolgt vom offiziellen Loader-Script.
+	 * embed.bsky.app ersetzt jedes [data-bluesky-uri]-Element client-seitig
+	 * durch ein <iframe> mit dem echten, live gerenderten Post - der
+	 * Blockquote-Inhalt hier ist nur der No-JS-Fallback-Text.
+	 *
+	 * @param list<array{uri: string, cid: string, text: string, authorDid: string,
+	 *   authorHandle: string, authorDisplayName: ?string, authorAvatar: ?string,
+	 *   createdAt: string, imageUrl: ?string}> $posts
+	 */
+	private function buildBlueskyThreadHtml(array $posts): string {
+		$blocks = [];
+		foreach ($posts as $post) {
+			$escapedUri  = htmlspecialchars($post['uri'], ENT_QUOTES, 'UTF-8');
+			$escapedText = nl2br(htmlspecialchars($post['text'], ENT_QUOTES, 'UTF-8'));
+
+			$blocks[] = '<blockquote class="bluesky-embed" data-bluesky-uri="' . $escapedUri . '">'
+				. '<p>' . $escapedText . '</p>'
+				. '</blockquote>';
+		}
+		$blocks[] = '<script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>';
+
+		return implode("\n", $blocks);
+	}
+
+	/**
+	 * Handle aus einer x.com/twitter.com-Status-URL ("/handle/status/12345…"),
+	 * oder null wenn die URL keine Tweet-Permalink-Form hat (Profil, Suche,
+	 * Startseite, …). "/i/status/…" (Xs handle-loser Permalink-Kurzlink, z. B.
+	 * über "Copy link") liefert bewusst null zurück statt "i" als Handle -
+	 * "i" ist ein Platzhalter, kein Konto.
+	 */
+	private function parseXStatusHandle(string $url): ?string {
+		$path = parse_url($url, PHP_URL_PATH);
+		if (!is_string($path) || !preg_match('#^/([A-Za-z0-9_]{1,15})/status/\d+#', $path, $m)) {
+			return null;
+		}
+		return strcasecmp($m[1], 'i') === 0 ? null : $m[1];
+	}
+
+	/**
+	 * Blueskys Gegenstück, nur für X: ein offizielles Tweet-Embed-<blockquote>
+	 * (leerer <a href> genügt - platform.twitter.com/widgets.js holt sich den
+	 * Tweet-Inhalt selbst über Twitters eigenes oEmbed) + der Loader.
+	 */
+	private function buildXPostHtml(string $url): string {
+		$escapedUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
+		return '<blockquote class="twitter-tweet"><a href="' . $escapedUrl . '"></a></blockquote>' . "\n"
+			. '<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>';
+	}
+
+	/**
+	 * Baut den Artikel-Content für einen Mastodon-Self-Thread als eigene,
+	 * native HTML-Karte je Post (kein Drittanbieter-Widget - Mastodon-
+	 * Instanzen sind föderiert, es gibt keinen zentralen, allowlistbaren
+	 * Embed-Host wie embed.bsky.app/platform.twitter.com). contentHtml kommt
+	 * von der Mastodon-API und ist bereits einfaches HTML (Absätze, Mention-/
+	 * Hashtag-Links, ggf. Custom-Emoji-<img>s) - läuft wie jeder andere
+	 * extrahierte Content anschließend durch applyPostFilters()/cleanHtml()/
+	 * sanitizeHtml(), wird also nicht blind vertraut.
+	 *
+	 * @param list<array{id: string, url: string, contentHtml: string,
+	 *   authorDisplayName: ?string, authorHandle: string, authorAvatar: ?string,
+	 *   createdAt: string, imageUrls: list<string>}> $posts
+	 */
+	private function buildMastodonThreadHtml(array $posts): string {
+		$blocks = [];
+		foreach ($posts as $post) {
+			$displayName   = $post['authorDisplayName'] ?: $post['authorHandle'];
+			$escapedName   = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
+			$escapedHandle = htmlspecialchars($post['authorHandle'], ENT_QUOTES, 'UTF-8');
+			$escapedUrl    = htmlspecialchars($post['url'], ENT_QUOTES, 'UTF-8');
+
+			$avatarHtml = '';
+			if ($post['authorAvatar'] !== null) {
+				$escapedAvatar = htmlspecialchars($post['authorAvatar'], ENT_QUOTES, 'UTF-8');
+				$avatarHtml = '<img class="merlin-mastodon-post__avatar" src="' . $escapedAvatar . '" alt="">';
+			}
+
+			$mediaHtml = '';
+			foreach ($post['imageUrls'] as $mediaUrl) {
+				$escapedMedia = htmlspecialchars($mediaUrl, ENT_QUOTES, 'UTF-8');
+				$mediaHtml .= '<img class="merlin-mastodon-post__media-item" src="' . $escapedMedia . '" alt="">';
+			}
+			if ($mediaHtml !== '') {
+				$mediaHtml = '<div class="merlin-mastodon-post__media">' . $mediaHtml . '</div>';
+			}
+
+			$blocks[] = '<div class="merlin-mastodon-post">'
+				. '<a class="merlin-mastodon-post__header" href="' . $escapedUrl . '">'
+				. $avatarHtml
+				. '<span class="merlin-mastodon-post__author">'
+				. '<span class="merlin-mastodon-post__name">' . $escapedName . '</span>'
+				. '<span class="merlin-mastodon-post__handle">@' . $escapedHandle . '</span>'
+				. '</span>'
+				. '</a>'
+				. '<div class="merlin-mastodon-post__content">' . $post['contentHtml'] . '</div>'
+				. $mediaHtml
+				. '</div>';
+		}
+
+		return implode("\n", $blocks);
+	}
+
+	/**
+	 * URL des statischen Plattform-Icons (16:9-PNG, transparenter
+	 * Hintergrund, unter public/img/{platform}-preview.png), das für
+	 * Bluesky-/X-/Mastodon-Artikel statt eines Avatars/Post-Fotos als
+	 * Vorschaubild dient (siehe Thread-/XPost-/Mastodon-Zweige oben).
+	 * $baseUrl kommt aus der Admin-Konfiguration (config('base_url'),
+	 * siehe App.php) - dasselbe Muster wie für andere selbstreferenzierende
+	 * absolute URLs in dieser Codebase (z. B. Password-Reset-Links).
+	 */
+	private function platformIconUrl(string $platform): string {
+		return rtrim($this->baseUrl, '/') . '/img/' . $platform . '-preview.png';
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
@@ -1452,8 +1691,25 @@ class ContentExtractorService {
 
 		// <script>- und <style>-Tags (inkl. Inhalt) per RegEx entfernen, bevor der DOM-Parser
 		// den String verarbeitet. So werden auch komplexe JS-Inhalte mit <, >, & oder --
-		// zuverlässig entfernt, ohne dass sie den DOM-Baum beschädigen können.
-		$html = preg_replace('/<script\b[^>]*>.*?<\/script>/si', '', $html) ?? $html;
+		// zuverlässig entfernt, ohne dass sie den DOM-Baum beschädigen können. Ausnahme wie
+		// bei cleanHtml(): die offiziellen Widget-Loader von Instagram/X/Bluesky (siehe
+		// isAllowedWidgetScriptSrc()) überleben auch diesen - zeitlich früheren - Schritt,
+		// sonst würde er dasselbe Script wieder entfernen, das cleanHtml()/sanitizeHtml()
+		// weiter unten bewusst durchlassen (applyPostFilters() läuft VOR cleanHtml()).
+		$html = preg_replace_callback(
+			'/<script\b([^>]*)>(.*?)<\/script>/si',
+			function (array $m): string {
+				if (trim($m[2]) !== '') {
+					return '';
+				}
+				if (!preg_match('/\bsrc\s*=\s*(["\'])(.*?)\1/is', $m[1], $srcMatch)) {
+					return '';
+				}
+				$src = html_entity_decode($srcMatch[2], ENT_QUOTES, 'UTF-8');
+				return $this->isAllowedWidgetScriptSrc($src) ? $m[0] : '';
+			},
+			$html
+		) ?? $html;
 		$html = preg_replace('/<style\b[^>]*>.*?<\/style>/si',  '', $html) ?? $html;
 
 		$prev = libxml_use_internal_errors(true);
@@ -2116,8 +2372,27 @@ class ContentExtractorService {
 	 * Clean HTML content
 	 */
 	private function cleanHtml(string $html): string {
-		// Remove script and style tags
-		$html = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $html);
+		// Remove script tags - AUSSER den offiziellen Widget-Loadern von
+		// Instagram/X/Bluesky (siehe isAllowedWidgetScriptSrc()): ohne diese
+		// Ausnahme würde dieser regelbasierte, noch VOR sanitizeHtml() laufende
+		// Schritt genau das Script wieder entfernen, das sanitizeHtml() später
+		// bewusst durchlässt - die dortige Allowlist liefe leer. Kein Skript-Body
+		// erlaubt (nur reine src-Loader), damit sich kein Inline-JS über einen
+		// sonst passenden src-Wert einschleusen kann.
+		$html = preg_replace_callback(
+			'/<script\b[^>]*>(.*?)<\/script>/is',
+			function (array $m): string {
+				if (trim($m[1]) !== '') {
+					return '';
+				}
+				if (!preg_match('/\bsrc\s*=\s*(["\'])(.*?)\1/is', $m[0], $srcMatch)) {
+					return '';
+				}
+				$src = html_entity_decode($srcMatch[2], ENT_QUOTES, 'UTF-8');
+				return $this->isAllowedWidgetScriptSrc($src) ? $m[0] : '';
+			},
+			$html
+		) ?? $html;
 		$html = preg_replace('/<style\b[^>]*>(.*?)<\/style>/is', '', $html);
 
 		// Remove linked CSS stylesheets
@@ -2144,7 +2419,11 @@ class ContentExtractorService {
 		) ?? $html;
 
 		// Strip every class token except Merlin's own merlin-* marker classes
-		// (merlin-infobox, merlin-quote, merlin-hero-image, …).
+		// (merlin-infobox, merlin-quote, merlin-hero-image, …) plus the fixed
+		// set of official embed-widget marker classes (instagram-media,
+		// twitter-tweet, bluesky-embed) that isAllowedWidgetScriptSrc()'s
+		// loaders key off of - same reasoning as the script-tag exception
+		// above, this must stay in sync with sanitizeHtml()'s allowlist.
 		//
 		// keepClasses=true on the Readability config (see processHtml()) is needed
 		// so those marker classes survive parsing — but it also lets every class
@@ -2162,10 +2441,11 @@ class ContentExtractorService {
 		$html = preg_replace_callback(
 			'/(<[^>]+\bclass=["\'])([^"\']*?)(["\'])/i',
 			static function (array $m): string {
+				static $allowedWidgetClasses = ['instagram-media', 'twitter-tweet', 'bluesky-embed'];
 				$classes = preg_split('/\s+/', trim($m[2]), -1, PREG_SPLIT_NO_EMPTY);
 				$kept = array_values(array_filter(
 					$classes,
-					static fn(string $c): bool => str_starts_with($c, 'merlin-')
+					static fn(string $c): bool => str_starts_with($c, 'merlin-') || in_array($c, $allowedWidgetClasses, true)
 				));
 				if ($kept === []) {
 					// Drop the entire class attribute
@@ -2264,7 +2544,10 @@ class ContentExtractorService {
 			// data-instgrm-permalink/-version: Instagrams offizielles Embed-Markup
 			// (siehe isAllowedInstagramPermalink()). Ohne diese Attribute rendert
 			// embed.js nur einen leeren Platzhalter statt des Posts.
-			'blockquote' => ['data-instgrm-permalink', 'data-instgrm-version'],
+			// data-bluesky-uri: Blueskys offizielles Embed-Markup (siehe
+			// isAllowedBlueskyUri()) - analog für den Self-Thread-Zweig
+			// (BlueskyThreadResolverService/ContentExtractorService, category=Thread).
+			'blockquote' => ['data-instgrm-permalink', 'data-instgrm-version', 'data-bluesky-uri'],
 			// iframe steht bewusst NICHT auf $allowedTags (generisches iframe-Embed
 			// ist ein XSS-Vektor) – erlaubt sind nur Video-Embeds von vertrauens-
 			// würdigen Hosts, siehe isAllowedVideoEmbedSrc(). Deren Attribute laufen
@@ -2648,6 +2931,17 @@ class ContentExtractorService {
 					continue;
 				}
 			}
+
+			// Blueskys Embed-Markup trägt die Post-Identität als at://-URI in
+			// einem data-Attribut statt href/src – muss syntaktisch eine
+			// gültige app.bsky.feed.post-URI sein, siehe isAllowedBlueskyUri().
+			if ($tag === 'blockquote' && $lname === 'data-bluesky-uri') {
+				$value = trim($el->getAttribute($name));
+				if (!$this->isAllowedBlueskyUri($value)) {
+					$el->removeAttribute($name);
+					continue;
+				}
+			}
 		}
 
 		// Bei Links, die in einem neuen Tab geöffnet werden, rel härten
@@ -2695,7 +2989,7 @@ class ContentExtractorService {
 			. 'https://www.youtube.com https://www.youtube-nocookie.com '
 			. 'https://player.vimeo.com https://player.twitch.tv '
 			. 'https://www.tiktok.com https://www.facebook.com https://www.arte.tv '
-			. 'https://www.instagram.com https://platform.twitter.com';
+			. 'https://www.instagram.com https://platform.twitter.com https://embed.bsky.app';
 	}
 
 	private function isAllowedVideoEmbedSrc(string $src): bool {
@@ -2782,8 +3076,8 @@ class ContentExtractorService {
 	}
 
 	/**
-	 * true, wenn $src exakt einer der beiden offiziellen Widget-Loader von
-	 * Instagram/X ist. Bewusst als exakter String-Match (nicht nur Host/Pfad-
+	 * true, wenn $src exakt einer der offiziellen Widget-Loader von
+	 * Instagram/X/Bluesky ist. Bewusst als exakter String-Match (nicht nur Host/Pfad-
 	 * Präfix wie bei isAllowedVideoEmbedSrc()): anders als ein sandboxed
 	 * iframe läuft dieses Skript MIT vollem DOM-Zugriff auf der Reader-Seite,
 	 * daher hier die engstmögliche Fassung.
@@ -2794,9 +3088,9 @@ class ContentExtractorService {
 			return false;
 		}
 
-		// Instagram/X liefern ihren offiziellen Embed-Code oft protokollrelativ
-		// ("//www.instagram.com/embed.js") aus – vor dem exakten Match auf
-		// https normalisieren.
+		// Instagram/X/Bluesky liefern ihren offiziellen Embed-Code oft
+		// protokollrelativ ("//www.instagram.com/embed.js") aus – vor dem
+		// exakten Match auf https normalisieren.
 		if (str_starts_with($src, '//')) {
 			$src = 'https:' . $src;
 		}
@@ -2804,6 +3098,7 @@ class ContentExtractorService {
 		static $allowedScriptSrcs = [
 			'https://www.instagram.com/embed.js',
 			'https://platform.twitter.com/widgets.js',
+			'https://embed.bsky.app/static/embed.js',
 		];
 
 		return in_array($src, $allowedScriptSrcs, true);
@@ -2829,6 +3124,20 @@ class ContentExtractorService {
 		}
 
 		return in_array(strtolower($parts['host']), ['www.instagram.com', 'instagram.com'], true);
+	}
+
+	/**
+	 * true, wenn $uri eine syntaktisch gültige at://-URI eines
+	 * app.bsky.feed.post-Records ist. Für das data-bluesky-uri-Attribut von
+	 * Blueskys Embed-<blockquote>, siehe sanitizeAttributes() - dort ist der
+	 * eigentliche Vertrauensanker aber ohnehin, dass diese URIs ausschließlich
+	 * von uns selbst erzeugt werden (BlueskyThreadResolverService, aus einer
+	 * API-Antwort desselben public.api.bsky.app-Hosts), nicht aus Fremd-HTML.
+	 * Diese Prüfung ist Defense-in-Depth gegen ein verändertes/fehlerhaftes
+	 * Content-Filter-Custom (Admin-/User-Ebene), keine Vertrauensentscheidung.
+	 */
+	private function isAllowedBlueskyUri(string $uri): bool {
+		return preg_match('#^at://did:[a-z0-9]+:[A-Za-z0-9._:%-]+/app\.bsky\.feed\.post/[A-Za-z0-9._~-]+$#', $uri) === 1;
 	}
 
 	/**

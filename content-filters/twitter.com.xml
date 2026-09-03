@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Merlin Content-Filter: twitter.com
+  Identisch zu x.com.xml - alte twitter.com-Links funktionieren weiterhin,
+  X' Embed-Infrastruktur akzeptiert beide Domains. Siehe x.com.xml für
+  Details.
+-->
+<domain name="twitter.com">
+
+  <category>XPost</category>
+
+  <pre-filter />
+  <post-filter />
+
+  <metadata>
+    <title    xpath="//meta[@property='og:title']/@content" />
+  </metadata>
+
+</domain>
