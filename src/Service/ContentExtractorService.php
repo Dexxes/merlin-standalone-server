@@ -558,25 +558,14 @@ class ContentExtractorService {
 		foreach ($posts as $post) {
 			$escapedUri  = htmlspecialchars($post['uri'], ENT_QUOTES, 'UTF-8');
 			$escapedText = nl2br(htmlspecialchars($post['text'], ENT_QUOTES, 'UTF-8'));
-			$handle      = $post['authorHandle'] !== '' ? $post['authorHandle'] : 'bsky.app';
-			$permalink   = 'https://bsky.app/profile/' . rawurlencode($handle) . '/post/' . rawurlencode($this->rkeyFromAtUri($post['uri']));
-			$escapedPermalink = htmlspecialchars($permalink, ENT_QUOTES, 'UTF-8');
-			$escapedHandle    = htmlspecialchars($handle, ENT_QUOTES, 'UTF-8');
 
 			$blocks[] = '<blockquote class="bluesky-embed" data-bluesky-uri="' . $escapedUri . '">'
 				. '<p>' . $escapedText . '</p>'
-				. '&mdash; @' . $escapedHandle . ' <a href="' . $escapedPermalink . '">' . $escapedPermalink . '</a>'
 				. '</blockquote>';
 		}
 		$blocks[] = '<script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>';
 
 		return implode("\n", $blocks);
-	}
-
-	/** Letztes Pfadsegment einer at://-URI (die Record-Key/rkey). */
-	private function rkeyFromAtUri(string $atUri): string {
-		$parts = explode('/', $atUri);
-		return end($parts) ?: '';
 	}
 
 	private function truncateText(string $text, int $maxLen): string {
