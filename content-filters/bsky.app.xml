@@ -9,8 +9,9 @@
 
   Die <metadata>-Regeln unten greifen nur als Fallback, falls die
   API-Auflösung fehlschlägt (z. B. gelöschter Post, Rate-Limit): Bluesky
-  rendert og:title/og:description/og:image serverseitig für Link-Previews,
-  auch ohne dass der Rest der Seite lädt.
+  rendert og:title/og:image serverseitig für Link-Previews, auch ohne dass
+  der Rest der Seite lädt. Bewusst kein <excerpt>: Threads/Posts bekommen
+  keinen Excerpt, der Post-Text steht schon vollständig im Embed selbst.
 -->
 <domain name="bsky.app">
 
@@ -21,7 +22,6 @@
 
   <metadata>
     <title    xpath="//meta[@property='og:title']/@content" />
-    <excerpt  xpath="//meta[@property='og:description']/@content" />
     <image    xpath="//meta[@property='og:image']/@content" />
   </metadata>
 

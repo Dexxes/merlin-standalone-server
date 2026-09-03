@@ -413,10 +413,12 @@ class ContentExtractorService {
 		elseif ($domainMeta['category'] === "Thread") {
 			// Self-Thread-Zweig (bsky.app, siehe BlueskyThreadResolverService):
 			// Readability wird übersprungen (bsky.app liefert als SPA praktisch
-			// keinen Server-Side-Content). Titel/Excerpt/Bild zunächst aus dem
-			// og:title/og:description/og:image-Fallback der bsky.app.xml
-			// (domainMeta, aus Step 2 oben) vorbelegen - das greift, wenn die
-			// API-Auflösung unten fehlschlägt.
+			// keinen Server-Side-Content). Titel/Bild zunächst aus dem
+			// og:title/og:image-Fallback der bsky.app.xml (domainMeta, aus
+			// Step 2 oben) vorbelegen - das greift, wenn die API-Auflösung
+			// unten fehlschlägt. Kein Excerpt: bsky.app.xml definiert dafür
+			// bewusst keine <metadata>-Regel, der Post-Text steht ja schon
+			// vollständig im Embed selbst.
 			$title       = $domainMeta['title'] ?? '';
 			$author      = null;
 			$imageUrl    = $domainMeta['image'] ?? null;
@@ -427,9 +429,8 @@ class ContentExtractorService {
 				$content   = $this->buildBlueskyThreadHtml($threadPosts);
 				$firstPost = $threadPosts[0];
 
-				$title  = $firstPost['text'] !== '' ? $this->truncateText($firstPost['text'], 80) : $title;
-				$excerpt = $this->truncateText($firstPost['text'], 300);
 				$author = $firstPost['authorDisplayName'] ?: ($firstPost['authorHandle'] ?: null);
+				$title  = $author !== null ? ('Post von ' . $author) : $title;
 
 				$threadImage = null;
 				foreach ($threadPosts as $threadPost) {
@@ -443,16 +444,15 @@ class ContentExtractorService {
 				$publishedAt = $firstPost['createdAt'] !== '' ? $this->parseDateString($firstPost['createdAt']) : null;
 
 				// Diese Werte gelten für den ganzen Self-Thread (ältester Post) -
-				// nicht von Step 9 unten mit og:title/og:description/og:image der
-				// einzelnen VERLINKTEN Post-Seite überschreiben lassen, die bei
-				// einem mehrteiligen Thread nur einen Teilausschnitt zeigen.
-				$domainMeta['title']   = $title;
-				$domainMeta['excerpt'] = $excerpt;
-				$domainMeta['image']   = $imageUrl;
+				// nicht von Step 9 unten mit og:title/og:image der einzelnen
+				// VERLINKTEN Post-Seite überschreiben lassen, die bei einem
+				// mehrteiligen Thread nicht zum Autor des Threads passen muss.
+				$domainMeta['title'] = $title;
+				$domainMeta['image'] = $imageUrl;
 			} else {
 				// API-Auflösung fehlgeschlagen (gelöschter Post, Rate-Limit,
 				// Netzwerkfehler) - einfacher Link-Fallback statt leerem Artikel.
-				// Titel/Excerpt/Bild bleiben der og:-Fallback von oben.
+				// Titel/Bild bleiben der og:-Fallback von oben.
 				$escapedBlueskyUrl = htmlspecialchars($url, ENT_QUOTES, 'UTF-8');
 				$content = '<a href="' . $escapedBlueskyUrl . '" class="merlin-bluesky-fallback-link">Zum Bluesky-Post</a>';
 				if ($title === '') {
@@ -566,15 +566,6 @@ class ContentExtractorService {
 		$blocks[] = '<script async src="https://embed.bsky.app/static/embed.js" charset="utf-8"></script>';
 
 		return implode("\n", $blocks);
-	}
-
-	private function truncateText(string $text, int $maxLen): string {
-		$text = trim($text);
-		// mb_-Varianten statt substr()/strlen(): Bluesky-Post-Text ist UTF-8 mit
-		// häufigen Mehrbyte-Zeichen (Umlaute, Gedankenstriche, Emoji). Byteweises
-		// substr() kann mittendrin in einem Mehrbyte-Zeichen abschneiden und eine
-		// kaputte UTF-8-Sequenz erzeugen, die die DB (SQLSTATE 22007/1366) ablehnt.
-		return mb_strlen($text, 'UTF-8') > $maxLen ? mb_substr($text, 0, $maxLen, 'UTF-8') . '...' : $text;
 	}
 
 	// ──────────────────────────────────────────────────────────────────────────
