@@ -2203,8 +2203,27 @@ class ContentExtractorService {
 	 * Clean HTML content
 	 */
 	private function cleanHtml(string $html): string {
-		// Remove script and style tags
-		$html = preg_replace('/<script\b[^>]*>(.*?)<\/script>/is', '', $html);
+		// Remove script tags - AUSSER den offiziellen Widget-Loadern von
+		// Instagram/X/Bluesky (siehe isAllowedWidgetScriptSrc()): ohne diese
+		// Ausnahme würde dieser regelbasierte, noch VOR sanitizeHtml() laufende
+		// Schritt genau das Script wieder entfernen, das sanitizeHtml() später
+		// bewusst durchlässt - die dortige Allowlist liefe leer. Kein Skript-Body
+		// erlaubt (nur reine src-Loader), damit sich kein Inline-JS über einen
+		// sonst passenden src-Wert einschleusen kann.
+		$html = preg_replace_callback(
+			'/<script\b[^>]*>(.*?)<\/script>/is',
+			function (array $m): string {
+				if (trim($m[1]) !== '') {
+					return '';
+				}
+				if (!preg_match('/\bsrc\s*=\s*(["\'])(.*?)\1/is', $m[0], $srcMatch)) {
+					return '';
+				}
+				$src = html_entity_decode($srcMatch[2], ENT_QUOTES, 'UTF-8');
+				return $this->isAllowedWidgetScriptSrc($src) ? $m[0] : '';
+			},
+			$html
+		) ?? $html;
 		$html = preg_replace('/<style\b[^>]*>(.*?)<\/style>/is', '', $html);
 
 		// Remove linked CSS stylesheets
@@ -2231,7 +2250,11 @@ class ContentExtractorService {
 		) ?? $html;
 
 		// Strip every class token except Merlin's own merlin-* marker classes
-		// (merlin-infobox, merlin-quote, merlin-hero-image, …).
+		// (merlin-infobox, merlin-quote, merlin-hero-image, …) plus the fixed
+		// set of official embed-widget marker classes (instagram-media,
+		// twitter-tweet, bluesky-embed) that isAllowedWidgetScriptSrc()'s
+		// loaders key off of - same reasoning as the script-tag exception
+		// above, this must stay in sync with sanitizeHtml()'s allowlist.
 		//
 		// keepClasses=true on the Readability config (see processHtml()) is needed
 		// so those marker classes survive parsing — but it also lets every class
@@ -2249,10 +2272,11 @@ class ContentExtractorService {
 		$html = preg_replace_callback(
 			'/(<[^>]+\bclass=["\'])([^"\']*?)(["\'])/i',
 			static function (array $m): string {
+				static $allowedWidgetClasses = ['instagram-media', 'twitter-tweet', 'bluesky-embed'];
 				$classes = preg_split('/\s+/', trim($m[2]), -1, PREG_SPLIT_NO_EMPTY);
 				$kept = array_values(array_filter(
 					$classes,
-					static fn(string $c): bool => str_starts_with($c, 'merlin-')
+					static fn(string $c): bool => str_starts_with($c, 'merlin-') || in_array($c, $allowedWidgetClasses, true)
 				));
 				if ($kept === []) {
 					// Drop the entire class attribute
