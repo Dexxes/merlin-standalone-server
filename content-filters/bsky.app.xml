@@ -7,11 +7,13 @@
   API auf und baut den Artikel-Inhalt aus Blueskys offiziellem Post-Embed
   (embed.bsky.app) - siehe ContentExtractorService, Thread-Zweig.
 
-  Die <metadata>-Regeln unten greifen nur als Fallback, falls die
+  Die <metadata>-Regel unten greift nur als Fallback, falls die
   API-Auflösung fehlschlägt (z. B. gelöschter Post, Rate-Limit): Bluesky
-  rendert og:title/og:image serverseitig für Link-Previews, auch ohne dass
-  der Rest der Seite lädt. Bewusst kein <excerpt>: Threads/Posts bekommen
-  keinen Excerpt, der Post-Text steht schon vollständig im Embed selbst.
+  rendert og:title serverseitig für Link-Previews, auch ohne dass der Rest
+  der Seite lädt. Bewusst kein <excerpt> und kein <image>: Threads/Posts
+  bekommen weder Excerpt noch Vorschau-/Hero-Bild - statt eines Fotos zeigt
+  der Reader das Bluesky-Icon (siehe ContentExtractorService::
+  buildPlatformIconHtml()).
 -->
 <domain name="bsky.app">
 
@@ -22,7 +24,6 @@
 
   <metadata>
     <title    xpath="//meta[@property='og:title']/@content" />
-    <image    xpath="//meta[@property='og:image']/@content" />
   </metadata>
 
 </domain>

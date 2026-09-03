@@ -9,8 +9,11 @@
   den Inhalt selbst client-seitig) - siehe ContentExtractorService,
   XPost-Zweig.
 
-  Die <metadata>-Regeln unten greifen nur als Fallback, wenn die URL keine
-  Tweet-Permalink-Form hat (Profil, Suche, Startseite).
+  Die <metadata>-Regel unten greift nur als Fallback, wenn die URL keine
+  Tweet-Permalink-Form hat (Profil, Suche, Startseite). Bewusst kein
+  <image>: kein Vorschau-/Hero-Bild für X-Posts - statt eines Fotos zeigt
+  der Reader das X-Icon (siehe ContentExtractorService::
+  buildPlatformIconHtml()).
 -->
 <domain name="x.com">
 
@@ -21,7 +24,6 @@
 
   <metadata>
     <title    xpath="//meta[@property='og:title']/@content" />
-    <image    xpath="//meta[@property='og:image']/@content" />
   </metadata>
 
 </domain>

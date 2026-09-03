@@ -686,6 +686,11 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
 #article-body .merlin-mastodon-post__media { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.5em; margin-top: 0.6em; }
 #article-body .merlin-mastodon-post__media-item { width: 100%; height: 160px; object-fit: cover; border-radius: var(--radius-sm); margin: 0; }
 
+/* Plattform-Icon statt Vorschau-/Hero-Bild für Bluesky-/X-/Mastodon-Artikel
+   (siehe ContentExtractorService::buildPlatformIconHtml()). */
+#article-body .merlin-platform-icon { display: flex; justify-content: center; margin: 0.5em 0 1.2em; }
+#article-body .merlin-platform-icon svg { width: 36px; height: 36px; fill: var(--text-muted); }
+
 #reader-status { color: var(--text-muted); }
 
 #password-gate form { margin-top: 1em; }
