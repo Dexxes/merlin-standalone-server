@@ -443,13 +443,28 @@ class ContentExtractorService {
 
 		// ── Step 12: Hero-Image in Content einfügen ───────────────────────────
 		// Readability entfernt Hero-Bilder aus <figure>-Containern, wenn sie vor
-		// dem Fließtext stehen. Falls der extrahierte Content kein <img> enthält
-		// (geprüft anhand der ersten 1000 Zeichen), aber imageUrl bekannt ist,
-		// wird das Bild als merlin-hero-image an den Anfang prepended.
+		// dem Fließtext stehen. Falls der extrahierte Content NICHT bereits mit
+		// einem Bild beginnt, aber imageUrl bekannt ist, wird das Bild als
+		// merlin-hero-image an den Anfang prepended.
 		// Eine vorhandene <figcaption> aus dem Quell-HTML wird mitübernommen.
 		// Das Bild darf so nur einmal erscheinen – stripDuplicateMetadata läuft danach.
-		$start = mb_substr(trim($content), 0, 2000);
-		if ($normalizedImageUrl !== null && !preg_match('/<img\b/i', $start)) {
+		//
+		// Geprüft wird nur, ob der Content mit einem Bild BEGINNT (nicht: ob
+		// irgendwo in den ersten N Zeichen eines vorkommt) – sonst verhindert ein
+		// früh im Fließtext sitzendes Bild (z. B. innerhalb der ersten zwei, drei
+		// Absätze) fälschlich das Voranstellen des eigentlichen Hero-Bilds, obwohl
+		// Readability den Hero selbst nie behalten hat.
+		// "Beginnt mit einem Bild" schließt auch den Fall ein, dass Readability
+		// das Hero-Bild verpackt in <p>/<a>/<div>/<span>/<figure> behalten hat
+		// (z. B. das bei WordPress übliche <p><a href="…"><img src="…"></a></p>
+		// oder ein Gutenberg-Bildblock <figure><img src="…"></figure>) – siehe
+		// contentStartsWithMatchingImage(). Ohne diese Erkennung würde dasselbe
+		// Bild doppelt erscheinen: einmal original im Content, einmal als
+		// künstlich vorangestelltes zweites merlin-hero-image.
+		$start = ltrim($content);
+		$startsWithHeroImage = preg_match('/^<(img|figure)\b/i', $start) === 1
+			|| $this->contentStartsWithMatchingImage($start, $normalizedImageUrl, $url);
+		if ($normalizedImageUrl !== null && !$startsWithHeroImage) {
 			$escapedUrl  = htmlspecialchars($normalizedImageUrl, ENT_QUOTES, 'UTF-8');
 			$figcaption  = '';
 			// Caption aus dem HTML-Scan übernehmen (nur wenn kein og:image die imageUrl
@@ -598,6 +613,179 @@ class ContentExtractorService {
 		);
 
 		return $this->shortenerPatterns;
+	}
+
+	/**
+	 * Prüft, ob der Content bereits mit dem Hero-Bild beginnt, auch wenn es
+	 * (z. B. bei WordPress-Quellen üblich) in <p>/<a>/<div>/<span>/<figure>
+	 * verpackt ist statt als nacktes <img> oder <figure> an Position 0 - z. B.
+	 * <p><a href="…"><img src="…"></a></p> oder ein Gutenberg-Bildblock
+	 * <div><figure class="wp-block-image"><img src="…"></figure></div>. Auch
+	 * ein <picture>-Wrapper (responsive Bilder mit <source>-Geschwistern vor
+	 * dem eigentlichen <img>, z. B. bei ARD/rbb-Quellen üblich) wird entpackt.
+	 * In dem Fall würde Step 12 sonst ein zweites, redundantes Hero-Bild
+	 * voranstellen (siehe Kommentar über Step 12).
+	 *
+	 * Entpackt wird immer nur das JEWEILS ERSTE Kind-Element eines Wrappers
+	 * (kein weiterer nicht-leerer Text davor) - absichtlich NICHT "genau ein
+	 * Kind insgesamt", denn Readability (fivefilters\Readability) wrapt den
+	 * kompletten extrahierten Content typischerweise in einen äußeren
+	 * <div id="readability-page-1" class="page">…</div> (id/class an dieser
+	 * Stelle bereits von cleanHtml() entfernt), der neben dem Hero-Bild auch
+	 * ALLE folgenden Absätze als Geschwister-Elemente enthält. Eine
+	 * "nur-einzelnes-Kind"-Prüfung würde diesen ganz normalen Wrapper-Fall
+	 * fälschlich als "kein Bild-Start" werten.
+	 *
+	 * Der Bild-Abgleich läuft über imagesMatchForDedup() statt über exakte
+	 * String-Gleichheit - siehe dort für die Begründung (Bildserver-
+	 * Größenvarianten/CDN-Resize-Parameter). Ein früh im Fließtext sitzendes,
+	 * andersartiges Bild hat so gut wie nie denselben Basis-Pfad wie das
+	 * Hero-Bild und verhindert das Voranstellen damit weiterhin nicht.
+	 */
+	private function contentStartsWithMatchingImage(string $html, ?string $normalizedImageUrl, string $baseUrl): bool {
+		if ($normalizedImageUrl === null) {
+			return false;
+		}
+
+		$doc = new \DOMDocument();
+		$prevLibxmlErrors = libxml_use_internal_errors(true);
+		$doc->loadHTML('<?xml encoding="UTF-8"><body>' . $html . '</body>', LIBXML_NOERROR | LIBXML_NOWARNING);
+		libxml_clear_errors();
+		libxml_use_internal_errors($prevLibxmlErrors);
+
+		$body = $doc->getElementsByTagName('body')->item(0);
+		if ($body === null) {
+			return false;
+		}
+
+		$node = $this->firstNonWhitespaceElementChild($body);
+
+		$depth = 0;
+		while ($node !== null && $depth < 6) {
+			$tag = strtolower($node->nodeName);
+
+			if ($tag === 'img') {
+				$src = $node->getAttribute('src');
+				if ($src === '') {
+					return false;
+				}
+				return $this->imagesMatchForDedup($this->normalizeUrl($src, $baseUrl), $normalizedImageUrl);
+			}
+
+			// <picture>s einziges relevantes Kind ist das abschließende <img> -
+			// die vorangehenden <source>-Geschwister tragen kein src, sondern
+			// srcset, und sind deshalb kein Fall für firstNonWhitespaceElementChild().
+			if ($tag === 'picture') {
+				$node = $this->firstImageInPicture($node);
+				$depth++;
+				continue;
+			}
+
+			if (!in_array($tag, ['p', 'div', 'span', 'a', 'figure'], true)) {
+				return false;
+			}
+
+			$node = $this->firstNonWhitespaceElementChild($node);
+			$depth++;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Liefert das <img> innerhalb eines <picture>-Elements.
+	 *
+	 * Sucht bewusst per getElementsByTagName() über ALLE Nachfahren statt nur
+	 * die direkten Kinder zu prüfen: <source> ist ein Void-Element (kein
+	 * schließendes Tag), aber libxml2s HTML-Parser (getestet mit 2.9.14)
+	 * behandelt ein <source> ohne explizites "/>" NICHT als Void-Element,
+	 * sondern verschachtelt jedes folgende Geschwister-Element als sein Kind -
+	 * <picture><source>…<source>…<img></picture> wird dadurch zu
+	 * <picture><source>…<source>…<img></source></source></picture>. Ein
+	 * simpler Kind-für-Kind-Scan (wie firstNonWhitespaceElementChild) würde
+	 * das <img> deshalb nie finden. Per Spezifikation kann ein <picture> ohnehin
+	 * nur <source>-Elemente und genau ein <img> enthalten - anders als bei den
+	 * generischen p/div/span/a/figure-Wrappern ist "irgendwo als Nachfahre"
+	 * hier also gleichbedeutend mit "das gesuchte Bild".
+	 */
+	private function firstImageInPicture(\DOMElement $picture): ?\DOMElement {
+		$img = $picture->getElementsByTagName('img')->item(0);
+		return $img instanceof \DOMElement ? $img : null;
+	}
+
+	/**
+	 * Liefert das erste Kind-Element eines Knotens, sofern davor nur
+	 * Leerraum-Textknoten stehen (kein sonstiger Text). Steht vor dem ersten
+	 * Element ein nicht-leerer Textknoten, oder hat der Knoten gar kein
+	 * Element-Kind, wird null zurückgegeben.
+	 *
+	 * Geschützte Leerzeichen (&nbsp;, U+00A0) zählen dabei als Leerraum:
+	 * WYSIWYG-Editoren fügen sie häufig als Abstandshalter direkt vor einem
+	 * Bild ein, PHPs trim() entfernt sie aber nicht (kein ASCII-Whitespace) -
+	 * ohne diese Normalisierung würde ein solches &nbsp; hier fälschlich als
+	 * "echter" Text gewertet und contentStartsWithMatchingImage() bräche die
+	 * Entpackung an dieser Stelle vorzeitig ab.
+	 */
+	private function firstNonWhitespaceElementChild(\DOMNode $parent): ?\DOMElement {
+		foreach ($parent->childNodes as $child) {
+			if ($child instanceof \DOMElement) {
+				return $child;
+			}
+			if ($child instanceof \DOMText && trim(str_replace("\u{00A0}", ' ', $child->textContent)) !== '') {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Vergleicht zwei bereits normalisierte Bild-URLs auf "wahrscheinlich
+	 * dasselbe Bild" statt auf exakte Gleichheit.
+	 *
+	 * Ein exakter String-Vergleich schlägt in der Praxis ausgerechnet für die
+	 * Bilder fehl, die contentStartsWithMatchingImage() erkennen soll - die
+	 * src im Content und die per og:image ermittelte imageUrl sind zwar
+	 * dasselbe Foto, aber fast nie exakt dieselbe URL:
+	 *
+	 *   - WordPress erzeugt für jedes in den Content eingefügte Bild
+	 *     automatisch mehrere Größenvarianten und hängt dafür
+	 *     "-{Breite}x{Höhe}" vor die Dateiendung an (z. B. "foto-1024x576.jpg"),
+	 *     während og:image meist auf die Originaldatei ohne dieses Suffix
+	 *     zeigt ("foto.jpg").
+	 *   - Bilder-CDNs/Resize-Proxies (Jetpack Photon, Cloudinary, einfache
+	 *     "?w=…"-Parameter) hängen die Zielgröße stattdessen als Query-String
+	 *     an dieselbe Basis-URL an.
+	 *   - AEM-basierte Bildserver (z. B. bei ARD/rbb: rbb-online.de) hängen
+	 *     ein oder mehrere "key=wert"-Pfadsegmente ans Ende des Bildpfads an,
+	 *     z. B. ".../foto.jpg.jpg/size=1280x720.jpg" (og:image) vs.
+	 *     ".../foto.jpg.jpg/quality=160/size=1376x774.jpg" (dieselbe Aufnahme
+	 *     im Artikeltext, andere Auflösung/Qualitätsstufe).
+	 *
+	 * Alle drei Varianten wurden vor diesem Fix ignoriert, wodurch das
+	 * Voranstellen in genau diesen - sehr verbreiteten - Fällen weiterhin
+	 * dupliziert hat. Die Suffix-/Pfadsegment-Muster sind spezifisch genug,
+	 * um nicht versehentlich auf einen unverwandten Bildpfad zu matchen.
+	 */
+	private function imagesMatchForDedup(string $contentImageUrl, string $normalizedImageUrl): bool {
+		if ($contentImageUrl === $normalizedImageUrl) {
+			return true;
+		}
+
+		$stripVariantMarkers = static function (string $url): string {
+			$url = explode('?', $url, 2)[0];
+			$url = preg_replace('/-\d+x\d+(?=\.\w+$)/i', '', $url) ?? $url;
+
+			// AEM-Bildserver-Renditions: ein oder mehrere trailing "key=wert"-
+			// Pfadsegmente (z. B. "size=1280x720.jpg", "quality=160")
+			// entfernen, bis das stabile Basis-Asset übrig bleibt.
+			$parts = explode('/', $url);
+			while (count($parts) > 1 && preg_match('/^[a-z]+=[\w.,%-]+$/i', end($parts)) === 1) {
+				array_pop($parts);
+			}
+			return implode('/', $parts);
+		};
+
+		return $stripVariantMarkers($contentImageUrl) === $stripVariantMarkers($normalizedImageUrl);
 	}
 
 	/**
