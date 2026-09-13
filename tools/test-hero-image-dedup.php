@@ -165,6 +165,20 @@ $check(
 	true
 );
 
+$check(
+	'Bildserver-Parameterkette im Dateinamen (spiegel.de-Stil): "_w960_r1.5_fpx54_fpy43" vs. "_w1200_r1.778_fpx54_fpy43"',
+	'<figure><picture><source srcset="x"><img src="https://cdn.prod.www.spiegel.de/images/2d8f3fcc-c7fa-4404-a47a-c275a8a7a05a_w960_r1.5_fpx54_fpy43.jpg"></picture></figure>',
+	'https://cdn.prod.www.spiegel.de/images/2d8f3fcc-c7fa-4404-a47a-c275a8a7a05a_w1200_r1.778_fpx54_fpy43.jpg',
+	true
+);
+
+$check(
+	'Tief verschachteltes, rein layoutbedingtes Wrapping (spiegel.de-Stil: 2 Divs vor <figure>, 2 weitere darin für Positionierung, dann erst <picture>) - Regression für die zu knappe alte Tiefenbegrenzung',
+	'<div><div><figure><div><div><picture><source srcset="x"><img src="https://example.com/wp-content/uploads/2024/foto.jpg"></picture></div></div></figure></div></div>',
+	'https://example.com/wp-content/uploads/2024/foto.jpg',
+	true
+);
+
 echo "\n\033[1mWeiterhin korrekt NICHT erkannt (Hero-Bild muss vorangestellt werden)\033[0m\n";
 
 $check(
@@ -192,6 +206,13 @@ $check(
 	'<picture> mit einem tatsächlich ANDEREN Bild (Fallback-<img> zeigt auf anderen Dateinamen)',
 	'<figure><picture><source srcset="x"><img src="https://example.com/wp-content/uploads/2024/anderes-foto.jpg"></picture></figure>',
 	'https://example.com/wp-content/uploads/2024/foto.jpg',
+	false
+);
+
+$check(
+	'Fortlaufende Kamera-Nummerierung OHNE Buchstaben-Key ("IMG_1234" vs. "IMG_1235") - zwei tatsächlich verschiedene Fotos, keine Bildserver-Variante',
+	'<p><a href="x"><img src="https://example.com/photos/IMG_1234.jpg"></a></p>',
+	'https://example.com/photos/IMG_1235.jpg',
 	false
 );
 

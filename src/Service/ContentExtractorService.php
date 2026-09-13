@@ -660,8 +660,15 @@ class ContentExtractorService {
 
 		$node = $this->firstNonWhitespaceElementChild($body);
 
+		// Obergrenze rein als Schutz gegen pathologisch tiefe/zirkuläre Eingaben,
+		// nicht als scharfe Grenze für plausible Wrapper-Tiefe: moderne,
+		// utility-class-lastige Layouts (z. B. Tailwind) verschachteln ein
+		// einzelnes Bild leicht in 5-6 rein layoutbedingte <div>s (z. B.
+		// spiegel.de: zwei Wrapper-Divs vor <figure>, zwei weitere darin für
+		// Positionierung, dann erst <picture>/<img>) - eine zu knappe Grenze
+		// hier bricht die Entpackung ab, bevor sie das Bild überhaupt erreicht.
 		$depth = 0;
-		while ($node !== null && $depth < 6) {
+		while ($node !== null && $depth < 20) {
 			$tag = strtolower($node->nodeName);
 
 			if ($tag === 'img') {
@@ -760,11 +767,21 @@ class ContentExtractorService {
 	 *     z. B. ".../foto.jpg.jpg/size=1280x720.jpg" (og:image) vs.
 	 *     ".../foto.jpg.jpg/quality=160/size=1376x774.jpg" (dieselbe Aufnahme
 	 *     im Artikeltext, andere Auflösung/Qualitätsstufe).
+	 *   - Andere Bildserver (z. B. spiegel.de: cdn.prod.www.spiegel.de) hängen
+	 *     stattdessen direkt im Dateinamen eine Kette aus "_key<Zahl>"-Parametern
+	 *     an die (z. B. UUID-basierte) Basis-ID an, z. B.
+	 *     "…-a05a_w1200_r1.778_fpx54_fpy43.jpg" (og:image) vs.
+	 *     "…-a05a_w960_r1.5_fpx54_fpy43.jpg" (dieselbe Aufnahme, andere
+	 *     Zielbreite/Seitenverhältnis).
 	 *
-	 * Alle drei Varianten wurden vor diesem Fix ignoriert, wodurch das
+	 * Alle vier Varianten wurden vor diesem Fix ignoriert, wodurch das
 	 * Voranstellen in genau diesen - sehr verbreiteten - Fällen weiterhin
 	 * dupliziert hat. Die Suffix-/Pfadsegment-Muster sind spezifisch genug,
-	 * um nicht versehentlich auf einen unverwandten Bildpfad zu matchen.
+	 * um nicht versehentlich auf einen unverwandten Bildpfad zu matchen: das
+	 * "_key<Zahl>"-Muster verlangt zwingend einen kurzen Buchstaben-Key vor
+	 * der Zahl, damit z. B. eine echte fortlaufende Kamera-Nummerierung wie
+	 * "IMG_1234.jpg" vs. "IMG_1235.jpg" (zwei tatsächlich verschiedene Fotos)
+	 * NICHT als Variante desselben Bilds durchgeht.
 	 */
 	private function imagesMatchForDedup(string $contentImageUrl, string $normalizedImageUrl): bool {
 		if ($contentImageUrl === $normalizedImageUrl) {
@@ -774,6 +791,10 @@ class ContentExtractorService {
 		$stripVariantMarkers = static function (string $url): string {
 			$url = explode('?', $url, 2)[0];
 			$url = preg_replace('/-\d+x\d+(?=\.\w+$)/i', '', $url) ?? $url;
+			// Bildserver-Parameterketten direkt im Dateinamen (z. B. spiegel.de:
+			// "_w960_r1.5_fpx54_fpy43" vor ".jpg") - eine oder mehrere
+			// "[_-]<Buchstaben><Zahl>"-Gruppen unmittelbar vor der Dateiendung.
+			$url = preg_replace('/(?:[_-][a-z]{1,4}[\d.]+)+(?=\.\w+$)/i', '', $url) ?? $url;
 
 			// AEM-Bildserver-Renditions: ein oder mehrere trailing "key=wert"-
 			// Pfadsegmente (z. B. "size=1280x720.jpg", "quality=160")
