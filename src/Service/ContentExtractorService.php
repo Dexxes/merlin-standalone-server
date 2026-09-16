@@ -1413,6 +1413,18 @@ class ContentExtractorService {
 	 * Voranstellen in genau diesen - sehr verbreiteten - Fällen weiterhin
 	 * dupliziert hat. Die Suffix-/Pfadsegment-Muster sind spezifisch genug,
 	 * um nicht versehentlich auf einen unverwandten Bildpfad zu matchen.
+	 *
+	 * Vierter Fall, nur als Fallback (Pfad ohne Host): manche Redaktionen
+	 * liefern die per Readability/og:image ermittelte imageUrl und das im
+	 * Content/Rohscan gefundene Bild von unterschiedlichen, aber
+	 * äquivalenten Hostnamen derselben Organisation aus - z. B. rbb24.de
+	 * (aktuelle Domain) vs. rbb-online.de (älteres Alias, liefert weiterhin
+	 * identische Bild-Assets unter identischem Pfad aus). Der volle
+	 * Host+Pfad-Vergleich oben schlägt dann trotz identischen Bilds fehl.
+	 * Da diese Methode nur noch die Caption-Zuordnung in Step 12 steuert
+	 * (nicht mehr die Entfernungs-Entscheidung, siehe stripLeadingImages()),
+	 * kostet ein Fehltreffer hier bestenfalls eine falsche statt eine
+	 * fehlende Caption - deshalb genügt der Pfad allein als Fallback.
 	 */
 	private function imagesMatchForDedup(string $contentImageUrl, string $normalizedImageUrl): bool {
 		if ($contentImageUrl === $normalizedImageUrl) {
@@ -1433,7 +1445,15 @@ class ContentExtractorService {
 			return implode('/', $parts);
 		};
 
-		return $stripVariantMarkers($contentImageUrl) === $stripVariantMarkers($normalizedImageUrl);
+		$strippedContentUrl = $stripVariantMarkers($contentImageUrl);
+		$strippedImageUrl   = $stripVariantMarkers($normalizedImageUrl);
+		if ($strippedContentUrl === $strippedImageUrl) {
+			return true;
+		}
+
+		$contentPath = parse_url($strippedContentUrl, PHP_URL_PATH);
+		return $contentPath !== null && $contentPath !== ''
+			&& $contentPath === parse_url($strippedImageUrl, PHP_URL_PATH);
 	}
 
 	/**

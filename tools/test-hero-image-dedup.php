@@ -299,9 +299,23 @@ $checkMatch(
 );
 
 $checkMatch(
+	'Domain-Alias derselben Redaktion (rbb24.de vs. altes rbb-online.de), identischer Pfad → Pfad-Fallback greift',
+	'https://www.rbb24.de/content/dam/rbb/rbb/rbb24/2026/2026_09/dpa-account/foto.jpg.jpg/quality=160/size=1376x774.jpg',
+	'https://www.rbb-online.de/content/dam/rbb/rbb/rbb24/2026/2026_09/dpa-account/foto.jpg.jpg/size=1280x720.jpg',
+	true
+);
+
+$checkMatch(
 	'Komplett anderes Bild (unterschiedlicher Basis-Dateiname) matcht nicht',
 	'https://example.com/wp-content/uploads/2024/anderes-foto.jpg',
 	'https://example.com/wp-content/uploads/2024/foto.jpg',
+	false
+);
+
+$checkMatch(
+	'Unterschiedlicher Host UND unterschiedlicher Pfad matcht nicht (Pfad-Fallback ist kein Freifahrtschein)',
+	'https://cdn-a.example.com/wp-content/uploads/2024/foto.jpg',
+	'https://cdn-b.example.com/assets/2024/anderes-foto.jpg',
 	false
 );
 
