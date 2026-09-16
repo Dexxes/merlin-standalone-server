@@ -5,7 +5,7 @@ declare(strict_types=1);
 /**
  * Testharness für die Hero-Bild-Behandlung in Step 12 von
  * ContentExtractorService::processHtml(): stripLeadingImages(),
- * unwrapSoleContainer(), resolveLeadingImage(), isSkippableLeadIn(),
+ * scanForLeadingImages(), resolveLeadingImage(), isSkippableLeadIn(),
  * firstNonWhitespaceElementChild(), firstImageInPicture(), imagesMatchForDedup().
  *
  * Aufruf (im Repo-Root):
@@ -233,9 +233,28 @@ $checkStrip(
 );
 
 $checkStrip(
-	'Nicht unterstützter Wrapper-Tag (z. B. <section>) wird nicht entpackt',
-	'<section><img src="https://example.com/wp-content/uploads/2024/foto.jpg"></section><p>Text.</p>',
+	'Nicht unterstützter Wrapper-Tag (z. B. <aside>) wird nicht entpackt',
+	'<aside><img src="https://example.com/wp-content/uploads/2024/foto.jpg"></aside><p>Text.</p>',
 	0
+);
+
+$checkStrip(
+	'<section> mit einem <img> als einzigem Kind wird transparent durchstiegen',
+	'<section><img src="https://example.com/wp-content/uploads/2024/foto.jpg"></section><p>Text.</p>',
+	1,
+	'<p>Text.</p>',
+	'<img'
+);
+
+$checkStrip(
+	'<article> mit langer Bildunterschrift blockiert die Suche nicht (rbb24.de-Regression)',
+	'<div><article><figure><img src="https://example.com/foto.jpg"><figcaption>' . str_repeat('Lange Bildunterschrift. ', 5) . '</figcaption></figure></article></div>'
+		. '<div><p>' . str_repeat('Echter Fließtext. ', 6) . '</p></div>',
+	1,
+	null,
+	null,
+	null,
+	trim(str_repeat('Lange Bildunterschrift. ', 5))
 );
 
 $checkStrip(

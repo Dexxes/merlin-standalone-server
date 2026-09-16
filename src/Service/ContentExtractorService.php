@@ -1140,12 +1140,7 @@ class ContentExtractorService {
 	 * (oder, wie zuvor, eines fälschlich komplett fehlenden Hero-Bilds, wenn
 	 * irgendein früheres, andersartiges Bild das Voranstellen unterdrückt hat).
 	 *
-	 * Kurze/Byline-artige Absätze (z. B. "Von Max Mustermann") und
-	 * Überschriften vor dem Bild werden übersprungen, aber nicht entfernt -
-	 * ohne diese Ausnahme würde eine Autorenzeile vor dem Hero-Bild die Suche
-	 * fälschlich vorzeitig beenden. Die Suche bricht spätestens nach
-	 * MAX_LEAD_IN_NODES Geschwisterknoten ab (Schutz vor pathologischen
-	 * Fällen, z. B. viele kurze Absätze in Folge).
+	 * Die eigentliche Suche läuft in scanForLeadingImages().
 	 *
 	 * @return array{content: string, images: list<array{src: string, caption: ?string}>}
 	 */
@@ -1163,42 +1158,7 @@ class ContentExtractorService {
 
 		$images    = [];
 		$inspected = 0;
-		$root      = $this->unwrapSoleContainer($body);
-		$node      = $root->firstChild;
-
-		while ($node !== null && $inspected < self::MAX_LEAD_IN_NODES) {
-			$next = $node->nextSibling;
-
-			if ($node instanceof \DOMText) {
-				if (trim(str_replace("\u{00A0}", ' ', $node->textContent)) !== '') {
-					break;
-				}
-				$node = $next;
-				continue;
-			}
-
-			if (!$node instanceof \DOMElement) {
-				$node = $next;
-				continue;
-			}
-
-			$inspected++;
-
-			$image = $this->resolveLeadingImage($node, $baseUrl);
-			if ($image !== null) {
-				$images[] = $image;
-				$root->removeChild($node);
-				$node = $next;
-				continue;
-			}
-
-			if ($this->isSkippableLeadIn($node)) {
-				$node = $next;
-				continue;
-			}
-
-			break;
-		}
+		$this->scanForLeadingImages($body, $baseUrl, $images, $inspected);
 
 		$out = '';
 		foreach ($body->childNodes as $child) {
@@ -1209,43 +1169,86 @@ class ContentExtractorService {
 	}
 
 	/**
-	 * Steigt durch eine Kette von Wrapper-Containern ab, die selbst keinen
-	 * eigenen Inhalt beitragen - allen voran Readabilitys äußeres
-	 * <div id="readability-page-1">…</div> (Attribute bereits von cleanHtml()
-	 * entfernt), das Hero-Bild UND alle folgenden Absätze als seine Kinder hat.
-	 * Ohne diesen Schritt würde stripLeadingImages() das Hero-Bild zwar über
-	 * denselben Wrapper hinweg erkennen (siehe resolveLeadingImage()), aber
-	 * beim Entfernen den kompletten Wrapper samt aller nachfolgenden Absätze
-	 * löschen, statt nur das Bild.
+	 * Durchsucht die Kinder von $parent der Reihe nach nach Leitbildern,
+	 * entfernt sie direkt aus dem DOM und sammelt sie (Quelle + Caption) in
+	 * $images. $inspected zählt dabei über alle Rekursionsebenen hinweg
+	 * jeden geprüften Nicht-Wrapper-Knoten mit und bricht spätestens bei
+	 * MAX_LEAD_IN_NODES ab (Schutz vor pathologischen Fällen, z. B. viele
+	 * kurze Absätze in Folge).
+	 *
+	 * Reine Struktur-Wrapper (<div>/<section>/<article>) werden dabei IMMER
+	 * transparent durchstiegen - unabhängig von ihrer Kinderzahl -, statt sie
+	 * wie jeden anderen Knoten über resolveLeadingImage()/isSkippableLeadIn()
+	 * zu bewerten. Zwei reale Fälle brauchen das:
+	 *   - Readabilitys äußerer Wrapper-Div (typischerweise
+	 *     <div id="readability-page-1">…</div>, Attribute bereits von
+	 *     cleanHtml() entfernt) enthält das Hero-Bild UND alle folgenden
+	 *     Absätze als Geschwister-Kinder. Ohne Transparenz würde
+	 *     resolveLeadingImage() zwar über diesen Wrapper hinweg bis zum Bild
+	 *     entpacken (sein Einzel-Pfad-Algorithmus ignoriert spätere
+	 *     Geschwister), aber ihn beim Entfernen als GANZES löschen und damit
+	 *     den kompletten nachfolgenden Artikeltext mitreißen.
+	 *   - Ein <article> mit Titel-/Meta-Block UND Hero-Figure als
+	 *     Geschwister-Kinder (z. B. rbb24.de: <article><figure>…) landet bei
+	 *     resolveLeadingImage() sonst in dessen internem Wrapper-Chain gar
+	 *     nicht erst (nur p/div/span/a/figure/picture erlaubt), fällt auf
+	 *     isSkippableLeadIn() zurück und wird dort fälschlich als "zu langer
+	 *     echter Absatz" gewertet, sobald z. B. allein die Bildunterschrift
+	 *     über der Schwelle liegt - die Suche bricht dann VOR dem Bild ab.
+	 * Deshalb muss dieser Check vor resolveLeadingImage()/isSkippableLeadIn()
+	 * laufen, nicht danach.
+	 *
+	 * @return bool false = ein substantieller Knoten wurde erreicht, die
+	 *         Suche muss auf dieser Ebene (und damit insgesamt) abbrechen.
+	 *         true = $parent ist erschöpft oder das Node-Limit erreicht, der
+	 *         Aufrufer darf mit seinem nächsten Geschwister weitermachen.
 	 */
-	private function unwrapSoleContainer(\DOMElement $root): \DOMElement {
-		while (in_array(strtolower($root->nodeName), ['body', 'div', 'section', 'article'], true)) {
-			$onlyChild       = null;
-			$hasOtherContent = false;
+	private function scanForLeadingImages(\DOMNode $parent, string $baseUrl, array &$images, int &$inspected): bool {
+		$node = $parent->firstChild;
 
-			foreach ($root->childNodes as $child) {
-				if ($child instanceof \DOMElement) {
-					if ($onlyChild !== null) {
-						$hasOtherContent = true;
-						break;
-					}
-					$onlyChild = $child;
-					continue;
+		while ($node !== null && $inspected < self::MAX_LEAD_IN_NODES) {
+			$next = $node->nextSibling;
+
+			if ($node instanceof \DOMText) {
+				if (trim(str_replace("\u{00A0}", ' ', $node->textContent)) !== '') {
+					return false;
 				}
-				if ($child instanceof \DOMText && trim(str_replace("\u{00A0}", ' ', $child->textContent)) !== '') {
-					$hasOtherContent = true;
-					break;
-				}
+				$node = $next;
+				continue;
 			}
 
-			if ($hasOtherContent || $onlyChild === null || !in_array(strtolower($onlyChild->nodeName), ['div', 'section', 'article'], true)) {
-				break;
+			if (!$node instanceof \DOMElement) {
+				$node = $next;
+				continue;
 			}
 
-			$root = $onlyChild;
+			if (in_array(strtolower($node->nodeName), ['div', 'section', 'article'], true)) {
+				if (!$this->scanForLeadingImages($node, $baseUrl, $images, $inspected)) {
+					return false;
+				}
+				$node = $next;
+				continue;
+			}
+
+			$image = $this->resolveLeadingImage($node, $baseUrl);
+			if ($image !== null) {
+				$inspected++;
+				$images[] = $image;
+				$parent->removeChild($node);
+				$node = $next;
+				continue;
+			}
+
+			$inspected++;
+			if ($this->isSkippableLeadIn($node)) {
+				$node = $next;
+				continue;
+			}
+
+			return false;
 		}
 
-		return $root;
+		return true;
 	}
 
 	/**
