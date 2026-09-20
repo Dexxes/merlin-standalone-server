@@ -81,9 +81,14 @@ class ContentExtractorService {
 	/**
 	 * Obergrenze für die Anzahl an Geschwisterknoten, die stripLeadingImages()
 	 * am Content-Anfang inspiziert, bevor abgebrochen wird - Schutz gegen
-	 * pathologische Fälle (z. B. viele kurze Absätze in Folge).
+	 * pathologische Fälle (z. B. viele kurze Absätze in Folge). Seit
+	 * isSkippableLeadIn() jeden kurzen Knoten unabhängig vom Tag überspringt
+	 * (nicht mehr nur p/div), zehren reale Seiten mit viel kurzem UI-Rahmen
+	 * vor dem Hero-Bild (leere Label-Liste, Social-Share-Icons, Meta-Zeilen, …)
+	 * das Budget spürbar an - 20 statt der ursprünglichen 8 gibt genug
+	 * Spielraum, ohne die Schutzfunktion aufzugeben.
 	 */
-	private const MAX_LEAD_IN_NODES = 8;
+	private const MAX_LEAD_IN_NODES = 20;
 
 	private DomainConfigProvider $domainConfig;
 
@@ -1317,22 +1322,28 @@ class ContentExtractorService {
 	}
 
 	/**
-	 * Erkennt Absätze/Überschriften, die vor dem Hero-Bild stehen dürfen, ohne
-	 * die Suche in stripLeadingImages() zu beenden - Überschriften immer,
-	 * kurze <p>/<div> (z. B. Bylines wie "Von Max Mustermann" oder Datums-
-	 * zeilen) bis zu LEAD_IN_TEXT_MAX_LENGTH sichtbaren Zeichen. Alles andere
-	 * (längere Absätze, Listen, Blockquotes, Tabellen, …) gilt als echter
-	 * Artikelinhalt und beendet die Suche.
+	 * Erkennt Knoten, die vor dem Hero-Bild stehen dürfen, ohne die Suche in
+	 * stripLeadingImages() zu beenden - Überschriften immer, alles andere
+	 * (z. B. Bylines wie "Von Max Mustermann", Datumszeilen, aber auch eine
+	 * leere <ul> für Themen-Labels oder eine Social-Share-Icon-Liste) bis zu
+	 * LEAD_IN_TEXT_MAX_LENGTH sichtbaren Zeichen, UNABHÄNGIG vom Tag.
+	 *
+	 * Früher nur für <p>/<div> geprüft - ein Tag außerhalb dieser Liste
+	 * (z. B. eine leere <ul> für Themen-Labels vor dem Hero-Bild, wie bei
+	 * deutschlandfunkkultur.de) beendete die Suche dadurch fälschlich sofort,
+	 * selbst wenn der Knoten gar keinen sichtbaren Text enthielt. Die
+	 * Tag-Einschränkung war nie das eigentliche Kriterium - entscheidend ist
+	 * einzig, wie viel sichtbarer Text im Knoten steckt.
+	 *
+	 * Ein Knoten mit substantiellem Text (längere Absätze, echte Listen mit
+	 * Inhalt, Blockquotes, Tabellen, …) beendet die Suche weiterhin, weil sein
+	 * Text dann automatisch über der Schwelle liegt.
 	 */
 	private function isSkippableLeadIn(\DOMElement $node): bool {
 		$tag = strtolower($node->nodeName);
 
 		if (preg_match('/^h[1-6]$/', $tag) === 1) {
 			return true;
-		}
-
-		if (!in_array($tag, ['p', 'div'], true)) {
-			return false;
 		}
 
 		$text = trim(preg_replace('/\s+/u', ' ', $node->textContent) ?? '');

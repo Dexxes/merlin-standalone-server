@@ -271,7 +271,29 @@ $checkStrip(
 
 $checkStrip(
 	'Mehr als MAX_LEAD_IN_NODES kurze Absätze in Folge brechen die Suche sicher ab',
-	str_repeat('<p>Kurz.</p>', 10) . '<figure><img src="https://example.com/foto.jpg"></figure>',
+	str_repeat('<p>Kurz.</p>', 25) . '<figure><img src="https://example.com/foto.jpg"></figure>',
+	0
+);
+
+$checkStrip(
+	'Leere <ul> (z. B. Themen-Labels) vor dem Bild blockiert die Suche nicht, unabhängig vom Tag (deutschlandfunkkultur.de-Regression)',
+	'<ul></ul><figure><img src="https://example.com/foto.jpg"></figure><p>' . str_repeat('Echter Fließtext. ', 6) . '</p>',
+	1,
+	null,
+	null,
+	null,
+	null
+);
+
+$checkStrip(
+	'Kurze Social-Share-Liste (<ul> mit wenig Text) vor dem Bild blockiert die Suche nicht',
+	'<ul><li>Teilen</li></ul><figure><img src="https://example.com/foto.jpg"></figure><p>' . str_repeat('Echter Fließtext. ', 6) . '</p>',
+	1
+);
+
+$checkStrip(
+	'Echte Liste mit substantiellem Inhalt vor dem Bild beendet die Suche weiterhin',
+	'<ul><li>' . str_repeat('Ein ausführlicher Listeneintrag mit echtem Inhalt. ', 3) . '</li></ul><figure><img src="https://example.com/foto.jpg"></figure>',
 	0
 );
 
