@@ -721,6 +721,10 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
    der Akzentfarbe des Nutzers (--merlin-support-accent, inline gesetzt); Text
    erbt vom Artikel, damit Hell/Dunkel ohne eigene Regeln lesbar bleibt. */
 .merlin-support-box {
+    /* Zwei Spalten: Icon der Seite über die volle Höhe, daneben Titel + Satz. */
+    display: flex;
+    align-items: stretch;
+    gap: 0.9em;
     margin: 1.5em 0;
     padding: 0.85em 1em;
     border-left: 4px solid var(--merlin-support-accent, #FF3B30);
@@ -730,17 +734,18 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
     font-size: 0.93em;
     line-height: 1.6;
 }
-.merlin-support-box__header { display: flex; align-items: center; gap: 0.6em; margin: 0 0 0.25em; }
-.merlin-support-box__icon {
-    flex: none; width: 28px; height: 28px; object-fit: contain;
-    border-radius: 6px; background: #fff; padding: 2px; box-sizing: border-box;
+/* Doppelter Selektor: schlägt die globale "#article-body img"-Regel (max-width, height:auto).
+   height:auto + align-self:stretch macht die Spalte so hoch wie die Box. */
+#article-body .merlin-support-box .merlin-support-box__icon {
+    flex: none; align-self: stretch; width: 3.5em; height: auto; max-width: 3.5em; min-height: 0;
+    margin: 0; padding: 0.3em; box-sizing: border-box; object-fit: contain;
+    border-radius: 6px; background: #fff;
 }
-.merlin-support-box__title { margin: 0; font-weight: 600; }
+.merlin-support-box__body { flex: 1; min-width: 0; }
+.merlin-support-box__title { margin: 0 0 0.25em; font-weight: 600; }
 .merlin-support-box__text { margin: 0; }
 .merlin-support-box a {
     color: inherit; font-weight: 600; text-decoration: underline;
     text-decoration-color: var(--merlin-support-accent, #FF3B30);
     text-decoration-thickness: 2px; text-underline-offset: 2px;
 }
-/* Die Box ist kein Artikelbild: globale #article-body img-Regel nicht anwenden. */
-#article-body .merlin-support-box__icon { max-width: 28px; border-radius: 6px; }

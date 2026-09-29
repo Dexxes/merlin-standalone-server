@@ -111,29 +111,31 @@
         wrapper.setAttribute('role', 'note');
         wrapper.style.setProperty('--merlin-support-accent', accent);
 
-        var header = document.createElement('div');
-        header.className = 'merlin-support-box__header';
-
+        // Zwei Spalten: links das Icon der Seite über die volle Höhe der Box (fehlt es, entfällt die
+        // Spalte), rechts Titel und Satz.
         var iconUrl = safeHttpUrl(box.iconUrl);
         if (iconUrl) {
             var img = document.createElement('img');
             img.className = 'merlin-support-box__icon';
             img.alt = '';
-            img.loading = 'lazy';
-            img.referrerPolicy = 'no-referrer';
+            img.setAttribute('loading', 'lazy');
+            img.setAttribute('referrerpolicy', 'no-referrer');
             // Kaputtes/blockiertes Icon: einfach weglassen, die Box bleibt vollständig.
             img.addEventListener('error', function () { img.remove(); });
             img.src = iconUrl;
-            header.appendChild(img);
+            wrapper.appendChild(img);
         }
+
+        var body = document.createElement('div');
+        body.className = 'merlin-support-box__body';
 
         var title = document.createElement('p');
         title.className = 'merlin-support-box__title';
         title.textContent = (i18n['supportBox.title'] || '').replace('{site}', box.siteName || '');
-        header.appendChild(title);
+        body.appendChild(title);
+        body.appendChild(sentence);
+        wrapper.appendChild(body);
 
-        wrapper.appendChild(header);
-        wrapper.appendChild(sentence);
         paragraphs[index].after(wrapper);
     }
 
