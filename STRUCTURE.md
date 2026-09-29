@@ -88,7 +88,7 @@ merlin-server/
 │   ├── admin_content_filters.php    # Admin-Custom-Ebene der Content-Filter (einfacher XML-Editor, kein Vue-Regel-Builder), JS ruft /api/admin/content-filters* per fetch()
 │   ├── personal_content_filters.php # Persönliche Content-Filter-Overrides, JS ruft /api/user/content-filters* per fetch()
 │   ├── library.php             # Leseliste (Startseite): Filter/Suche/Hinzufügen, JS ruft /api/articles* per fetch()
-│   ├── article_reader.php      # Leseansicht eines Artikels, JS ruft /api/articles/{id} + /api/tags per fetch(); inkl. Teilen-Popover, <audio>-TTS-Player + HTML-Export-Link
+│   ├── article_reader.php      # (PDF-Artikel: decoratePdfMarkers() baut den merlin-pdf-Marker zur Karte um; ebenso public_share.php) Leseansicht eines Artikels, JS ruft /api/articles/{id} + /api/tags per fetch(); inkl. Teilen-Popover, <audio>-TTS-Player + HTML-Export-Link
 │   └── public_share.php        # Öffentliche Share-Ansicht (kein Login), JS ruft /s/{token}/data|unlock|tts per fetch()
 ├── tools/
 │   ├── migrate.php             # CLI: Migrationen anwenden

@@ -100,6 +100,7 @@ final class PublicShareController {
             'siteName' => $article['site_name'],
             'content' => $article['content'],
             'url' => $article['url'],
+            'category' => $article['category'],
             'publishedAt' => $article['published_at'],
             'readingTime' => (int) $article['reading_time'],
             'highlights' => array_map(HighlightRepository::toPublicArray(...), $highlights),
