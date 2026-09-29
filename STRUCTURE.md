@@ -266,7 +266,7 @@ merlin-server/
   XPath-Zählung der Highlight-Engine sie übergeht. In `public_share.php` kennt
   `resolveXPath()` dieses Attribut nicht - die Box wird deshalb erst NACH dem
   Wiederherstellen der Highlights eingefügt.
-  Das Icon steht als eigene Spalte (6,5 em, ohne Kachel-Hintergrund) links über die volle Boxhöhe
+  Das Icon steht als eigene Spalte (4,5 em, ohne Kachel-Hintergrund) links über die volle Boxhöhe
   (`align-self: stretch`), Titel und Satz in der Spalte daneben, vertikal zentriert. **Seiten-Icon**: `ContentExtractorService::extractSiteIconUrl()` liest beim Extrahieren
   (auch bei `extractFromHtml()`, also Browser-Erweiterungen) das beste Icon der
   *konkreten Seite* aus dem HTML (apple-touch-icon > `<link rel=icon>` [SVG > PNG > ICO,
