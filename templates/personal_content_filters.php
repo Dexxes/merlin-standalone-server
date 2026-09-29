@@ -179,4 +179,5 @@ document.getElementById('cf-test-form').addEventListener('submit', async (e) => 
 
 loadDomains();
 </script>
+<?php include __DIR__ . '/partials/source_link.php'; ?>
 <?php include __DIR__ . '/partials/footer.php'; ?>

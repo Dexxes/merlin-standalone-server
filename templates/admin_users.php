@@ -101,4 +101,5 @@ document.getElementById('create-user').addEventListener('submit', async (e) => {
 loadSettings();
 loadUsers();
 </script>
+<?php include __DIR__ . '/partials/source_link.php'; ?>
 <?php include __DIR__ . '/partials/footer.php'; ?>
