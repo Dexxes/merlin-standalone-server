@@ -642,6 +642,13 @@ article h1 { font-size: 1.9em; line-height: 1.25; margin: 0 0 0.4em; }
 .article-tags .tag-chip { padding: 0.15em 0.65em; border-radius: 999px; font-size: 0.75em; font-weight: 600; }
 .tag-chip { padding: 0.15em 0.65em; border-radius: 999px; font-size: 0.75em; font-weight: 600; }
 
+/* PDF-Artikel: Karte aus dem merlin-pdf-Marker (siehe decoratePdfMarkers()) */
+#article-body .merlin-pdf { display: flex; align-items: center; justify-content: space-between; gap: 1em; flex-wrap: wrap; margin: 1.3em 0; padding: 1.1em 1.2em; background: var(--surface-alt); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+#article-body .merlin-pdf::before { content: "PDF"; font-weight: 700; font-size: 0.8em; letter-spacing: 0.05em; padding: 0.25em 0.6em; border-radius: var(--radius-sm); background: var(--border-strong); color: var(--text-muted); }
+#article-body .merlin-pdf-label { flex: 1; font-weight: 600; }
+#article-body .merlin-pdf-open { padding: 0.45em 1em; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; }
+#article-body .merlin-pdf-fallback-link { text-decoration: underline; }
+
 #article-body img { max-width: 100%; height: auto; border-radius: var(--radius-sm); }
 
 /* Native ARD-/ZDF-/Arte-Wiedergabe (siehe VideoStreamResolverService). Feste

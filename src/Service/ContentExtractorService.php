@@ -31,6 +31,17 @@ class ContentExtractorService {
 	private const MAX_REDIRECTS = 10;
 
 	/**
+	 * Obergrenze für den HTML-Body beim Abruf; bricht der Download darüber ab,
+	 * wird er verworfen. PDFs sind ausgenommen: sie werden gar nicht geladen,
+	 * siehe buildPdfResult().
+	 */
+	private const MAX_BODY_BYTES = 20 * 1024 * 1024;
+
+	/** Kategorie und Marker-Klasse für PDF-Artikel (nur URL, kein Dateiinhalt). */
+	public const PDF_CATEGORY     = 'PDF';
+	public const PDF_MARKER_CLASS = 'merlin-pdf';
+
+	/**
 	 * Header-Namen, die eine Domain-Config über <fetch> setzen darf (kleingeschrieben).
 	 *
 	 * Whitelist statt Blacklist, weil die XML-Dateien Konfigurationsdaten sind:
@@ -134,6 +145,13 @@ class ContentExtractorService {
 			// real target before fetching, so we get the actual article.
 			$url = $this->resolveRedirectUrl($url);
 
+			// PDF-Link: die Datei wird nie geladen oder gespeichert, der Artikel
+			// besteht nur aus URL + Marker; die Clients laden die PDF selbst.
+			if ($this->isPdfUrl($url))
+			{
+				return $this->buildPdfResult($url);
+			}
+
 			// Fetch HTML content from the network. httpRequestFollowingRedirects()
 			// (aufgerufen über fetchUrl()) folgt jeder 3xx-Kette bereits vollständig,
 			// unabhängig davon, ob der Host in resources/url-shorteners.json steht –
@@ -143,8 +161,15 @@ class ContentExtractorService {
 			// Domain-Filter-Auswahl und die gespeicherte Artikel-URL müssen sich darauf
 			// stützen, sonst greift bei unbekannten Shortenern die falsche (oder gar
 			// keine) Content-Filter-Konfiguration.
-			['body' => $rawHtml, 'httpCharset' => $httpCharset, 'finalUrl' => $finalUrl] = $this->fetchUrl($url);
+			['body' => $rawHtml, 'httpCharset' => $httpCharset, 'finalUrl' => $finalUrl, 'isPdf' => $isPdf] = $this->fetchUrl($url);
 			$url = $finalUrl;
+
+			// Content-Type application/pdf trotz Nicht-.pdf-URL (Redirect,
+			// Download-Skript): fetchUrl() hat den Transfer schon abgebrochen.
+			if ($isPdf)
+			{
+				return $this->buildPdfResult($url);
+			}
 
 			$this->assertNotPaywalled($url, $rawHtml);
 
@@ -192,6 +217,11 @@ class ContentExtractorService {
 
 		try
 		{
+			if ($this->isPdfUrl($url))
+			{
+				return $this->buildPdfResult($url);
+			}
+
 			return $this->processHtml($url, $html);
 		}
 		catch (ParseException $e) 
@@ -666,7 +696,65 @@ class ContentExtractorService {
 	private function fetchUrl(string $url): array
 	{
 		$result = $this->httpRequestFollowingRedirects($url, nobody: false);
-		return ['body' => $result['body'], 'httpCharset' => $result['httpCharset'], 'finalUrl' => $result['finalUrl']];
+		return [
+			'body'        => $result['body'],
+			'httpCharset' => $result['httpCharset'],
+			'finalUrl'    => $result['finalUrl'],
+			'isPdf'       => $result['isPdf'],
+		];
+	}
+
+	/**
+	 * true, wenn der URL-Pfad auf .pdf endet (Query/Fragment ignoriert).
+	 */
+	private function isPdfUrl(string $url): bool
+	{
+		$path = parse_url($url, PHP_URL_PATH);
+		return is_string($path) && preg_match('/\.pdf$/i', rawurldecode($path)) === 1;
+	}
+
+	/**
+	 * Baut das Extraktionsergebnis für einen PDF-Link. Die PDF selbst wird weder
+	 * geladen noch gespeichert – gespeichert wird nur die URL als Marker
+	 * (<div class="merlin-pdf" data-pdf-src>), die Clients laden das Dokument zur
+	 * Lesezeit direkt von der Quelle. Der Titel kommt aus dem Dateinamen.
+	 *
+	 * Der Host wird trotzdem gegen private/reservierte Adressen geprüft
+	 * (SSRF-Schutz), damit sich über PDF-Links keine internen URLs in der
+	 * Artikelliste ablegen lassen, die ein Client später abrufen würde.
+	 *
+	 * @throws \Exception bei ungültigem Schema oder privatem/nicht auflösbarem Host.
+	 */
+	private function buildPdfResult(string $url): array
+	{
+		$this->assertPublicHostAndResolve($url);
+
+		$host = preg_replace('/^www\./i', '', strtolower((string) parse_url($url, PHP_URL_HOST))) ?? '';
+		$path = (string) parse_url($url, PHP_URL_PATH);
+		$name = rawurldecode(basename($path));
+		$name = preg_replace('/\.pdf$/i', '', $name) ?? $name;
+		$name = trim((string) preg_replace('/[\s_\-]+/u', ' ', $name));
+		$title = $name !== '' ? $name : $host;
+
+		$safeUrl = htmlspecialchars($url, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+		$content = $this->sanitizeHtml(
+			'<div class="' . self::PDF_MARKER_CLASS . '" data-pdf-src="' . $safeUrl . '">'
+			. '<a href="' . $safeUrl . '" target="_blank" class="merlin-pdf-fallback-link">PDF</a>'
+			. '</div>'
+		);
+
+		return [
+			'url'         => $url,
+			'title'       => $title,
+			'content'     => $content,
+			'excerpt'     => 'PDF · ' . $host,
+			'author'      => null,
+			'siteName'    => $host,
+			'imageUrl'    => null,
+			'readingTime' => 0,
+			'publishedAt' => null,
+			'category'    => self::PDF_CATEGORY,
+		];
 	}
 
 	/**
@@ -688,7 +776,7 @@ class ContentExtractorService {
 	 *   3. Redirects werden manuell über den Location-Header verfolgt, maximal
 	 *      MAX_REDIRECTS mal.
 	 *
-	 * @return array{body: string, httpCharset: ?string, finalUrl: string}
+	 * @return array{body: string, httpCharset: ?string, finalUrl: string, isPdf: bool}
 	 * @throws \Exception bei ungültigem/privatem Host, zu vielen Redirects oder curl-Fehlern.
 	 */
 	private function httpRequestFollowingRedirects(string $url, bool $nobody): array
@@ -726,8 +814,28 @@ class ContentExtractorService {
 			];
 
 			$headers = [];
+			$abort   = null;
 
 			if (!$nobody) {
+				// Transfer abbrechen, sobald der Header eine PDF ankündigt (die wird
+				// nie geladen, siehe buildPdfResult()) oder der Body zu groß wird.
+				$opts[CURLOPT_NOPROGRESS]       = false;
+				$opts[CURLOPT_PROGRESSFUNCTION] = static function ($ch, $dlTotal, $dlNow) use (&$abort): int {
+					$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+					$type = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+					if ($code >= 200 && $code < 300
+						&& is_string($type)
+						&& stripos($type, 'application/pdf') === 0
+					) {
+						$abort = 'pdf';
+						return 1;
+					}
+					if ($dlNow > self::MAX_BODY_BYTES || $dlTotal > self::MAX_BODY_BYTES) {
+						$abort = 'too-large';
+						return 1;
+					}
+					return 0;
+				};
 				$opts[CURLOPT_AUTOREFERER] = true;
 				$opts[CURLOPT_ENCODING]    = ''; // Leerer String = alle unterstützten Encodings aktivieren
 				$headers = [
@@ -776,6 +884,12 @@ class ContentExtractorService {
 			if ($response === false) {
 				$error = curl_error($ch);
 				curl_close($ch);
+				if ($abort === 'pdf') {
+					return ['body' => '', 'httpCharset' => null, 'finalUrl' => $currentUrl, 'isPdf' => true];
+				}
+				if ($abort === 'too-large') {
+					throw new \Exception('Antwort zu groß (>' . self::MAX_BODY_BYTES . ' Bytes): ' . $currentUrl);
+				}
 				throw new \Exception('HTTP-Request fehlgeschlagen: ' . $error);
 			}
 
@@ -805,7 +919,7 @@ class ContentExtractorService {
 				$httpCharset = strtolower(trim($m[1], " \t\"'"));
 			}
 
-			return ['body' => $body, 'httpCharset' => $httpCharset, 'finalUrl' => $currentUrl];
+			return ['body' => $body, 'httpCharset' => $httpCharset, 'finalUrl' => $currentUrl, 'isPdf' => false];
 		}
 
 		throw new \Exception('Zu viele Redirects (>' . self::MAX_REDIRECTS . '): ' . $url);
@@ -2265,6 +2379,9 @@ class ContentExtractorService {
 			// (siehe isAllowedInstagramPermalink()). Ohne diese Attribute rendert
 			// embed.js nur einen leeren Platzhalter statt des Posts.
 			'blockquote' => ['data-instgrm-permalink', 'data-instgrm-version'],
+			// PDF-Marker (siehe buildPdfResult()); die URL wird in sanitizeAttributes()
+			// auf http(s) geprüft.
+			'div'        => ['data-pdf-src'],
 			// iframe steht bewusst NICHT auf $allowedTags (generisches iframe-Embed
 			// ist ein XSS-Vektor) – erlaubt sind nur Video-Embeds von vertrauens-
 			// würdigen Hosts, siehe isAllowedVideoEmbedSrc(). Deren Attribute laufen
@@ -2652,6 +2769,15 @@ class ContentExtractorService {
 
 		// Bei Links, die in einem neuen Tab geöffnet werden, rel härten
 		// (Schutz gegen window.opener-Tabnabbing).
+		// PDF-Marker: nur http(s)-URLs, sonst fliegt das Attribut raus und der
+		// Client zeigt nur den Fallback-Link.
+		if ($tag === 'div' && $el->hasAttribute('data-pdf-src')) {
+			$pdfSrc = trim($el->getAttribute('data-pdf-src'));
+			if (!preg_match('#^https?://#i', $pdfSrc) || $this->isDangerousUrl($pdfSrc)) {
+				$el->removeAttribute('data-pdf-src');
+			}
+		}
+
 		if ($tag === 'a' && $el->getAttribute('target') === '_blank') {
 			$el->setAttribute('rel', 'noopener noreferrer');
 		}

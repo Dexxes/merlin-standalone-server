@@ -4,6 +4,18 @@ All notable changes to merlin-server are documented here. Format based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versioning based on
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- PDF links: saving a URL that points to a PDF (path ends in `.pdf`, or the
+  server answers `application/pdf`) creates an article with category `PDF`
+  instead of failing in the HTML extractor. The PDF is never downloaded or
+  stored - only the URL, as a `<div class="merlin-pdf" data-pdf-src>` marker;
+  the title comes from the file name. The reader and public share links show
+  a card with an "Open PDF" button (no embedding: most hosts block it);
+  native clients render the document themselves. Public share data now
+  includes `category`. The HTML fetch also stops after 20 MB.
+
 ## v1.0
 
 ### Added

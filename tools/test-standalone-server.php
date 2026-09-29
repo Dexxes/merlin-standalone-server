@@ -204,6 +204,30 @@ check('toPublicArray enthält nie den Passwort-Hash', !array_key_exists('passwor
 $shares->deleteByArticleId($articleId, (int) $user['id']);
 check('deleteByArticleId entfernt den Share', $shares->findByArticleId($articleId, (int) $user['id']) === null);
 
+// ─── PDF-Artikel (ContentExtractorService::buildPdfResult() & Sanitizer) ────
+echo "\nPDF-Artikel\n";
+$extractor = (new ReflectionClass(\Merlin\Service\ContentExtractorService::class))->newInstanceWithoutConstructor();
+$callExtractor = static function (string $method, mixed ...$args) use ($extractor): mixed {
+    $m = new ReflectionMethod(\Merlin\Service\ContentExtractorService::class, $method);
+    $m->setAccessible(true);
+    return $m->invoke($extractor, ...$args);
+};
+check('isPdfUrl: .pdf mit Query', $callExtractor('isPdfUrl', 'https://example.org/a/REPORT.PDF?x=1') === true);
+check('isPdfUrl: .pdf nur in der Query', $callExtractor('isPdfUrl', 'https://example.org/view?file=a.pdf') === false);
+$pdf = $callExtractor('buildPdfResult', 'https://93.184.216.34/docs/Mein_Jahres-Bericht%202025.pdf');
+check('PDF: category', $pdf['category'] === 'PDF');
+check('PDF: Titel aus Dateiname', $pdf['title'] === 'Mein Jahres Bericht 2025');
+check('PDF: Marker enthält URL', str_contains($pdf['content'], 'class="merlin-pdf"') && str_contains($pdf['content'], 'data-pdf-src="https://93.184.216.34/docs/'));
+$ssrf = false;
+try {
+    $callExtractor('buildPdfResult', 'http://127.0.0.1/x.pdf');
+} catch (\Throwable) {
+    $ssrf = true;
+}
+check('PDF: privater Host wird abgelehnt', $ssrf);
+$sanitized = (string) $callExtractor('sanitizeHtml', '<div class="merlin-pdf" data-pdf-src="javascript:alert(1)">x</div>');
+check('PDF: javascript:-URL im Marker wird entfernt', !str_contains($sanitized, 'data-pdf-src'));
+
 unlink($dbPath);
 
 echo "\n" . ($failures === 0 ? "Alle Checks bestanden.\n" : "{$failures} Check(s) fehlgeschlagen.\n");

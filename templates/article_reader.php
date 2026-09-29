@@ -99,6 +99,8 @@ require_once __DIR__ . '/partials/icons.php';
 <script>
 const I18N = <?= json_encode($t->forJs([
     'articleReader.removeHighlight',
+    'articleReader.pdf.document',
+    'articleReader.pdf.open',
     'articleReader.untitledArticle',
     'articleReader.minutesShort',
     'articleReader.markAsUnread',
@@ -825,6 +827,29 @@ document.getElementById('btn-font').addEventListener('click', () => {
 // nie per innerHTML-Stringkonkatenation - Artikeldaten stammen von
 // Drittseiten und sind damit nicht vertrauenswürdig. Einzige Ausnahme ist
 // article-body weiter unten (siehe Kommentar dort). ──────────────────────
+// PDF-Artikel (category "PDF"): der Marker <div class="merlin-pdf" data-pdf-src>
+// enthält nur die Quell-URL (die PDF wird nicht gespeichert). Er wird zu einer
+// Karte mit "PDF öffnen"-Button umgebaut; eingebettet wird nicht, weil fremde
+// Server das per X-Frame-Options/CORS meist blockieren.
+function decoratePdfMarkers(container) {
+    container.querySelectorAll('.merlin-pdf[data-pdf-src]').forEach(marker => {
+        const href = sanitizeHref(marker.getAttribute('data-pdf-src'));
+        if (!href) return;
+        marker.textContent = '';
+        marker.setAttribute('data-hl-exclude', '');
+        const label = document.createElement('span');
+        label.className = 'merlin-pdf-label';
+        label.textContent = I18N['articleReader.pdf.document'];
+        const open = document.createElement('a');
+        open.className = 'merlin-pdf-open';
+        open.href = href;
+        open.target = '_blank';
+        open.rel = 'noopener noreferrer';
+        open.textContent = I18N['articleReader.pdf.open'];
+        marker.append(label, open);
+    });
+}
+
 function renderArticle() {
     document.title = (article.title || I18N['articleReader.untitledArticle']) + ' – Merlin';
     document.getElementById('a-title').textContent = article.title || article.url;
@@ -882,6 +907,7 @@ function renderArticle() {
     // v-html in merlin-nextclouds ArticleReader.vue.
     document.getElementById('article-body').innerHTML = article.content || '';
     executeEmbedScripts();
+    decoratePdfMarkers(document.getElementById('article-body'));
     setupVideoPlayer(articleId, article.url);
     applyFontSize();
 

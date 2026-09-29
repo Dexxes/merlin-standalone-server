@@ -28,6 +28,8 @@
 <script>
 const I18N = <?= json_encode($t->forJs([
     'publicShare.untitledArticle',
+    'articleReader.pdf.document',
+    'articleReader.pdf.open',
     'publicShare.linkExpired',
     'publicShare.articleNotFound',
     'publicShare.wrongPassword',
@@ -45,6 +47,29 @@ function sanitizeHref(url) {
         return null;
     }
     return url;
+}
+
+// PDF-Artikel (category "PDF"): der Marker <div class="merlin-pdf" data-pdf-src>
+// enthält nur die Quell-URL (die PDF wird nicht gespeichert). Er wird zu einer
+// Karte mit "PDF öffnen"-Button umgebaut; eingebettet wird nicht, weil fremde
+// Server das per X-Frame-Options/CORS meist blockieren.
+function decoratePdfMarkers(container) {
+    container.querySelectorAll('.merlin-pdf[data-pdf-src]').forEach(marker => {
+        const href = sanitizeHref(marker.getAttribute('data-pdf-src'));
+        if (!href) return;
+        marker.textContent = '';
+        marker.setAttribute('data-hl-exclude', '');
+        const label = document.createElement('span');
+        label.className = 'merlin-pdf-label';
+        label.textContent = I18N['articleReader.pdf.document'];
+        const open = document.createElement('a');
+        open.className = 'merlin-pdf-open';
+        open.href = href;
+        open.target = '_blank';
+        open.rel = 'noopener noreferrer';
+        open.textContent = I18N['articleReader.pdf.open'];
+        marker.append(label, open);
+    });
 }
 
 // Über innerHTML eingefügte <script>-Tags werden vom Browser NIE ausgeführt
@@ -246,6 +271,7 @@ function renderArticle(article) {
     // <script>-Quellen bleiben erhalten).
     document.getElementById('article-body').innerHTML = article.content || '';
     executeEmbedScripts();
+    decoratePdfMarkers(document.getElementById('article-body'));
 
     if (article.highlights && article.highlights.length) {
         renderHighlightsReadOnly(document.getElementById('article-body'), article.highlights);
