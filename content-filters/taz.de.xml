@@ -57,6 +57,11 @@
     <image    xpath="//meta[@property='og:image']/@content" />
     <published xpath="//time[@itemprop='datePublished']/@datetime" />
     -->
+    <donations url="https://taz.de/taz-zahl-ich/ihnen-liegt-die-taz-am-herzen/!v=bd8182f9-0363-4f43-936f-7a2f0666b18c/" />
   </metadata>
+
+  <paywall>
+    <subscribe url="https://taz.de/abo/" />
+  </paywall>
 
 </domain>

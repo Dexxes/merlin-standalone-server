@@ -7,6 +7,14 @@ All notable changes to merlin-server are documented here. Format based on
 ## v1.0
 
 ### Added
+- Support box in the reader and on public share pages: a note between two
+  paragraphs ("Enjoying this article from …? Consider a subscription or a
+  donation") linking to the source's subscription/donation page, with the icon
+  of the concrete article page (apple-touch-icon / `<link rel="icon">`, read
+  during extraction). Hidden in the reader when the user has an active
+  paywall subscription login. Port from merlin-nextcloud; the content-filter
+  schema now knows `<paywall><subscribe>` and `<metadata><donations>` and the
+  bundled filters carry those URLs.
 - Standalone read-it-later server: no Nextcloud dependency, SQLite storage,
   own account management (registration, login, password reset, admin/user
   roles)

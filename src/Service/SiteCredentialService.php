@@ -190,6 +190,19 @@ final class SiteCredentialService {
         }
     }
 
+    /**
+     * true, wenn $userId für $domain Zugangsdaten hinterlegt hat UND der
+     * letzte Login-Versuch erfolgreich war (STATUS_OK). Abgelaufene Cookies
+     * zählen bewusst als aktiv - ensureValidCookies() loggt beim nächsten
+     * Abruf selbst neu ein. Fehlgeschlagene/ungeprüfte Zugangsdaten sind kein
+     * aktives Abo (siehe SupportBoxService). Port von merlin-nextclouds
+     * gleichnamiger Methode.
+     */
+    public function hasActiveLogin(int $userId, string $domain): bool {
+        $row = $this->repository->find($userId, $domain);
+        return $row !== null && $row['last_login_status'] === SiteCredential::STATUS_OK;
+    }
+
     public function delete(int $userId, string $domain): void {
         $this->repository->deleteByUserAndDomain($userId, $domain);
     }

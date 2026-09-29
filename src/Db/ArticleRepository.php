@@ -180,6 +180,7 @@ final class ArticleRepository {
     /**
      * @param array{url: string, title: string, content: string, excerpt: ?string,
      *              author: ?string, siteName: ?string, imageUrl: ?string,
+     *              siteIconUrl?: ?string,
      *              readingTime: int, publishedAt: ?string, category: ?string} $extracted
      */
     public function applyExtractionResult(int $id, array $extracted): void {
@@ -187,6 +188,7 @@ final class ArticleRepository {
             'UPDATE articles SET
                 url = :url, title = :title, content = :content, excerpt = :excerpt,
                 author = :author, site_name = :site_name, image_url = :image_url,
+                site_icon_url = COALESCE(:site_icon_url, site_icon_url),
                 reading_time = :reading_time, published_at = COALESCE(:published_at, published_at),
                 category = COALESCE(:category, category), is_processing = 0, updated_at = :updated_at
              WHERE id = :id'
@@ -199,6 +201,7 @@ final class ArticleRepository {
             'author' => $extracted['author'],
             'site_name' => $extracted['siteName'],
             'image_url' => $extracted['imageUrl'],
+            'site_icon_url' => $extracted['siteIconUrl'] ?? null,
             'reading_time' => $extracted['readingTime'],
             'published_at' => $extracted['publishedAt'] ?: null,
             'category' => $extracted['category'] ?: null,

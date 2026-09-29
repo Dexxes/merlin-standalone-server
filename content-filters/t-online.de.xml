@@ -52,4 +52,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://pur.t-online.de/" />
+  </paywall>
+
 </domain>

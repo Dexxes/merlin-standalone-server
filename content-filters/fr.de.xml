@@ -43,4 +43,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://www.fr.de/service/" />
+  </paywall>
+
 </domain>

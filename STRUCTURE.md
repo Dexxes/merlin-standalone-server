@@ -57,6 +57,7 @@ merlin-server/
 │   │   ├── ContentFilterSchema.php         # Port aus merlin-nextcloud, unverändert
 │   │   ├── ContentFilterValidator.php      # Port aus merlin-nextcloud, unverändert (Prüfung vor dem Speichern)
 │   │   ├── ContentFilterTrace.php          # Port aus merlin-nextcloud, unverändert (Trefferzähler für den Testlauf)
+│   │   ├── SupportBoxService.php           # Port aus merlin-nextcloud: Daten der Support-Infobox (<paywall><subscribe> + <metadata><donations>, Seiten-Icon, Akzentfarbe); Reader: entfällt bei aktivem Abo-Login, Share: immer
 │   │   ├── TtsStreamService.php            # Port aus merlin-nextcloud: HTML→Plaintext→Piper-Daemon-Proxy, geteilt von TtsController + PublicShareController
 │   │   └── Login/                          # 🔜 geplant: Paywall-Abo-Login, Port aus merlin-nextcloud (siehe PLATFORMS.md)
 │   │       ├── LoginProviderInterface.php     # login(username, password): Cookie-Bundle
@@ -77,7 +78,8 @@ merlin-server/
 │   │   └── SiteCredentialRepository.php # 🔜 geplant: PDO-Port von merlin-nextclouds SiteCredentialMapper, verschlüsselte Paywall-Zugangsdaten je Nutzer/Domain
 │   └── Migration/
 │       ├── MigrationRunner.php     # führt migrations/*.sql aus, trackt schema_migrations
-│       └── migrations/001_initial.sql, 002_login_flow.sql, 003_share_and_settings.sql, 004_content_filters.sql
+│       └── migrations/001_initial.sql, 002_login_flow.sql, 003_share_and_settings.sql, 004_content_filters.sql, 005_site_credentials.sql, 006_article_paywall_login.sql, 007_article_site_icon.sql
+├── public/js/support-box.js    # Support-Infobox (Abo-/Spendenlink) zur Lesezeit zwischen zwei Absätze setzen (data-hl-exclude), von article_reader.php und public_share.php eingebunden
 ├── content-filters/            # Kopie der Bundle-Filter aus merlin-nextcloud (nur lesend, kein Sync-Tooling)
 ├── templates/                  # Server-seitige PHP-Templates, kein Vue
 │   ├── partials/header.php, footer.php
@@ -93,7 +95,8 @@ merlin-server/
 ├── tools/
 │   ├── migrate.php             # CLI: Migrationen anwenden
 │   ├── create-admin.php        # CLI: Admin-Account anlegen
-│   └── test-standalone-server.php  # Smoke-Test gegen temporäre SQLite-DB
+│   ├── test-standalone-server.php  # Smoke-Test gegen temporäre SQLite-DB
+│   └── test-support-box.php        # Testharness SupportBoxService + Seiten-Icon-Auswahl (temporäre SQLite-DB, Bundle-Filter)
 ├── config/config.sample.php    # Vorlage, nach config.php kopieren (gitignored); u.a. tts.daemon_url (Default http://127.0.0.1:5051)
 └── data/                       # merlin.sqlite + merlin.log (gitignored)
 ```
@@ -245,6 +248,32 @@ merlin-server/
   `ArticleController` eine eindeutige "Login erforderlich"-Antwort liefern statt eines stillen
   Fehlschlags - Grundlage für einen Login-Dialog in allen Clients (`PLATFORMS.md`, Client-seitige
   Umsetzung ist ein eigener Folgeschritt, betrifft auch diesen Backend-Typ gleichermaßen).
+- **Support-Infobox (Abo-/Spendenlink)**: Port von merlin-nextclouds `SupportBoxService`.
+  `ArticleController::show()` (Einzelabruf, nie in Listen) und
+  `PublicShareController::data()` liefern ein Feld `supportBox`
+  `{siteName, subscribeUrl, donationsUrl, accentColor, iconUrl}` oder `null`.
+  Quellen sind die gemergte Domain-Config (`<paywall><subscribe url>` bzw.
+  `<metadata><donations url>` - beide dafür ins `ContentFilterSchema` aufgenommen; das
+  Bundle wurde nur um diese URLs ergänzt, nicht vollständig mit merlin-nextcloud
+  synchronisiert). Im Reader entfällt die Box bei aktivem Abo-Login
+  (`SiteCredentialService::hasActiveLogin()`), im Share-Link wird sie immer gezeigt
+  (Akzentfarbe des Erstellers). Bewusst ein Datenfeld und kein HTML im gespeicherten
+  Content: sonst würden Highlight-XPaths verschoben, TTS/Export/Share die Box
+  mitliefern und sie wäre nach Hinterlegen eines Abo-Logins nicht mehr entfernbar.
+  Das Frontend (`public/js/support-box.js`, Vanilla-Port von merlin-nextclouds
+  `support-box.js`) setzt sie nach einem pseudo-zufälligen Top-Level-Absatz ein (Seed =
+  Artikel-ID, ab 4 Absätzen) und markiert sie mit `data-hl-exclude`, damit die
+  XPath-Zählung der Highlight-Engine sie übergeht. In `public_share.php` kennt
+  `resolveXPath()` dieses Attribut nicht - die Box wird deshalb erst NACH dem
+  Wiederherstellen der Highlights eingefügt.
+  **Seiten-Icon**: `ContentExtractorService::extractSiteIconUrl()` liest beim Extrahieren
+  (auch bei `extractFromHtml()`, also Browser-Erweiterungen) das beste Icon der
+  *konkreten Seite* aus dem HTML (apple-touch-icon > `<link rel=icon>` [SVG > PNG > ICO,
+  jeweils größtes per `sizes`] > msapplication-TileImage > `/favicon.ico`, `<base href>`
+  berücksichtigt, kein `og:image`) und speichert es in `articles.site_icon_url` (Migration 007).
+  Es gibt keinen zusätzlichen Request; Artikel aus der Zeit vor der Spalte fallen auf
+  `/favicon.ico` der Origin zurück (ein erneutes Extrahieren setzt das echte Icon), und ein
+  nicht ladbares Bild blendet der Client per `onerror` aus.
 - **Bewusst nicht nachgebaut** (kein Client braucht sie - siehe Analyse in der
   Konversation, die diese Erweiterung angelegt hat): **SSE** (`/api/events`,
   in merlin-nextcloud selbst nirgends von einem Client aufgerufen - Android

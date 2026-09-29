@@ -40,4 +40,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://www.berliner-kurier.de/checkout" />
+  </paywall>
+
 </domain>

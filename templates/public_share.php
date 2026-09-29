@@ -25,6 +25,7 @@
     <div id="article-body"></div>
 </article>
 
+<script src="<?= url('/js/support-box.js') ?>"></script>
 <script>
 const I18N = <?= json_encode($t->forJs([
     'publicShare.untitledArticle',
@@ -33,6 +34,12 @@ const I18N = <?= json_encode($t->forJs([
     'publicShare.wrongPassword',
     'publicShare.loading',
     'publicShare.minutesShort',
+    'supportBox.title',
+    'supportBox.both',
+    'supportBox.subscribeOnly',
+    'supportBox.donateOnly',
+    'supportBox.subscribeLabel',
+    'supportBox.donateLabel',
 ]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const token = <?= json_encode($token) ?>;
 
@@ -250,6 +257,10 @@ function renderArticle(article) {
     if (article.highlights && article.highlights.length) {
         renderHighlightsReadOnly(document.getElementById('article-body'), article.highlights);
     }
+    // Erst NACH den Highlights: resolveXPath() hier kennt data-hl-exclude nicht, die
+    // Box würde sonst die div/p-Zählung verschieben (Position stabil per Artikel-Token).
+    // Immer angezeigt, auch wenn der Ersteller ein Abo hat (siehe SupportBoxService::forShare).
+    MerlinSupportBox.insert(document.getElementById('article-body'), article.supportBox, token, I18N);
 
     document.getElementById('reader-status').style.display = 'none';
     document.getElementById('password-gate').style.display = 'none';

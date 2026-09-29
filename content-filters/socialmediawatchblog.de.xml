@@ -44,4 +44,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://www.socialmediawatchblog.de/mitgliedschaft/" />
+  </paywall>
+
 </domain>

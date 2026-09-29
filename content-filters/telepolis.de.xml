@@ -219,6 +219,7 @@
     <!-- Kategorie per XPath (überschreibt <category> unten) -->
     <!-- <category xpath="//meta[@property='article:section']/@content" /> -->
 
+    <donations url="https://www.telepolis.de/Unterstuetzen-Sie-Qualitaetsjournalismus-auf-Telepolis" />
   </metadata>
 
   <!-- ── Feste Kategorie ────────────────────────────────────────────────── -->

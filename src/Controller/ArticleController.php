@@ -11,6 +11,7 @@ use Merlin\Http\Response;
 use Merlin\Service\ContentExtractorService;
 use Merlin\Service\ExportService;
 use Merlin\Service\Login\PaywallLoginRequiredException;
+use Merlin\Service\SupportBoxService;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -26,6 +27,7 @@ final class ArticleController {
         private readonly ContentExtractorService $contentExtractor,
         private readonly ExportService $exportService,
         private readonly LoggerInterface $logger,
+        private readonly SupportBoxService $supportBox,
     ) {
     }
 
@@ -71,7 +73,12 @@ final class ArticleController {
         if ($article === null) {
             return Response::json(['error' => 'Not found'], 404);
         }
-        return Response::json($this->withTags($article));
+        $data = $this->withTags($article);
+        // Daten für die Support-Infobox (Abo-/Spendenlink), null wenn die Domain
+        // keine URL hinterlegt hat oder der Nutzer dort einen aktiven Login hat.
+        // Nur hier (Einzelabruf), nicht in Listen - siehe SupportBoxService.
+        $data['supportBox'] = $this->supportBox->forReader($article, $request->authUserId());
+        return Response::json($data);
     }
 
     public function create(Request $request): Response {
@@ -174,6 +181,7 @@ final class ArticleController {
                     'author' => $extracted['author'],
                     'siteName' => $extracted['siteName'],
                     'imageUrl' => $extracted['imageUrl'],
+                    'siteIconUrl' => $extracted['siteIconUrl'] ?? null,
                     'readingTime' => $extracted['readingTime'],
                     'publishedAt' => $extracted['publishedAt'] ? $extracted['publishedAt']->format('c') : null,
                     'category' => $extracted['category'] ?? null,
