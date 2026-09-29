@@ -41,6 +41,11 @@
     <image    xpath="//meta[@property='og:image']/@content" />
     <published xpath="//time[@itemprop='datePublished']/@datetime" />
     -->
+    <donations url="https://go.nd-aktuell.de/ndbleibt" />
   </metadata>
+
+  <paywall>
+    <subscribe url="https://www.nd-aktuell.de/abo/" />
+  </paywall>
 
 </domain>

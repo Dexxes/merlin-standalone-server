@@ -42,4 +42,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://premium.zeit.de/probe-abo" />
+  </paywall>
+
 </domain>

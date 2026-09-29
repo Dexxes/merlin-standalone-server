@@ -96,6 +96,7 @@ require_once __DIR__ . '/partials/icons.php';
 
 <!-- Lokal vendored (kein Laufzeit-CDN), siehe public/js/vendor/README.md -->
 <script src="<?= url('/js/vendor/hls.min.js') ?>"></script>
+<script src="<?= url('/js/support-box.js') ?>"></script>
 <script>
 const I18N = <?= json_encode($t->forJs([
     'articleReader.removeHighlight',
@@ -113,6 +114,12 @@ const I18N = <?= json_encode($t->forJs([
     'articleReader.passwordNoProtectionPlaceholder',
     'articleReader.confirmRevokeLink',
     'articleReader.notFoundOrForbidden',
+    'supportBox.title',
+    'supportBox.both',
+    'supportBox.subscribeOnly',
+    'supportBox.donateOnly',
+    'supportBox.subscribeLabel',
+    'supportBox.donateLabel',
 ]), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
 const articleId = <?= (int) $articleId ?>;
 const FONT_SIZE_STEPS = [15, 17, 19, 21, 24];
@@ -882,6 +889,9 @@ function renderArticle() {
     // v-html in merlin-nextclouds ArticleReader.vue.
     document.getElementById('article-body').innerHTML = article.content || '';
     executeEmbedScripts();
+    // Abo-/Spendenlink der Quelle (Server liefert null, wenn nicht anwendbar) -
+    // data-hl-exclude hält die Highlight-XPaths stabil, siehe js/support-box.js.
+    MerlinSupportBox.insert(document.getElementById('article-body'), article.supportBox, articleId, I18N);
     setupVideoPlayer(articleId, article.url);
     applyFontSize();
 

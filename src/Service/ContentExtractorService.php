@@ -113,6 +113,7 @@ class ContentExtractorService {
 	 *   author: ?string,
 	 *   siteName: ?string,
 	 *   imageUrl: ?string,
+	 *   siteIconUrl: ?string,
 	 *   readingTime: int,
 	 *   publishedAt: ?\DateTime,
 	 *   category: ?string
@@ -223,6 +224,10 @@ class ContentExtractorService {
 	{
 		// Normalise domain (strips www.) for config-file lookup
 		$domain = $this->normalizeDomain($url);
+
+		// Icon der konkreten Seite (Support-Infobox) - aus dem rohen HTML, bevor
+		// Pre-Filter/Readability das <head> anfassen.
+		$siteIconUrl = $this->extractSiteIconUrl($rawHtml, $url);
 
 		// ── Step 0: Encoding normalisation ───────────────────────────────────
 		// Seiten mit iso-8859-1 oder anderen Nicht-UTF-8-Encodings erzeugen
@@ -484,6 +489,7 @@ class ContentExtractorService {
 			'author'      => $author,
 			'siteName'    => $siteName,
 			'imageUrl'    => $normalizedImageUrl,
+			'siteIconUrl' => $siteIconUrl,
 			'readingTime' => $readingTime,
 			'publishedAt' => $publishedAt,
 			'category'    => $domainMeta['category'],
@@ -1096,6 +1102,100 @@ class ContentExtractorService {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Bestes Icon der konkreten Seite aus den <link>-/<meta>-Tags des <head>
+	 * (Support-Infobox, siehe Service\SupportBoxService): apple-touch-icon
+	 * (größtes per sizes) vor <link rel="icon"> (SVG vor PNG vor ICO, jeweils
+	 * größtes), dann msapplication-TileImage, zuletzt /favicon.ico der Origin.
+	 * Bewusst NICHT og:image - das ist meist ein Artikel-/Werbebanner, kein Logo.
+	 *
+	 * Es findet kein zusätzlicher Request statt; die URL wird nur aus dem
+	 * bereits geladenen HTML gelesen. Der Client blendet ein nicht ladbares Bild
+	 * einfach aus.
+	 */
+	private function extractSiteIconUrl(string $html, string $baseUrl): ?string {
+		$parts = parse_url($baseUrl);
+		$scheme = strtolower($parts['scheme'] ?? '');
+		$host = $parts['host'] ?? '';
+		if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
+			return null;
+		}
+		$origin = $scheme . '://' . $host . (isset($parts['port']) ? ':' . $parts['port'] : '');
+
+		$best = null;
+		$bestScore = -1;
+		try {
+			$previous = libxml_use_internal_errors(true);
+			$doc = new \DOMDocument();
+			// Nur den Anfang parsen: <head> steht vorn, der Rest ist für Icons irrelevant.
+			$doc->loadHTML('<?xml encoding="utf-8" ?>' . substr($html, 0, 262144), LIBXML_NONET);
+			libxml_clear_errors();
+			libxml_use_internal_errors($previous);
+
+			$xpath = new \DOMXPath($doc);
+
+			// <base href> ändert die Auflösung relativer Icon-URLs.
+			$base = $baseUrl;
+			$baseEl = $xpath->query('//base[@href]')->item(0);
+			if ($baseEl instanceof \DOMElement && trim($baseEl->getAttribute('href')) !== '') {
+				$base = $this->normalizeUrl(trim($baseEl->getAttribute('href')), $baseUrl);
+			}
+
+			foreach ($xpath->query('//link[@rel and @href]') as $link) {
+				/** @var \DOMElement $link */
+				$rels = preg_split('/\s+/', strtolower(trim($link->getAttribute('rel'))), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+				$href = trim($link->getAttribute('href'));
+				if ($href === '' || preg_match('/^(data|javascript|blob):/i', $href)) {
+					continue;
+				}
+
+				$isApple = (bool) array_intersect($rels, ['apple-touch-icon', 'apple-touch-icon-precomposed']);
+				$isIcon = in_array('icon', $rels, true);
+				if (!$isApple && !$isIcon) {
+					continue; // u. a. mask-icon (einfarbige Safari-Pinned-Tab-Silhouette)
+				}
+
+				$size = 0;
+				foreach (preg_split('/\s+/', strtolower($link->getAttribute('sizes')), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $token) {
+					if (preg_match('/^(\d+)x(\d+)$/', $token, $m)) {
+						$size = max($size, (int) $m[1], (int) $m[2]);
+					}
+				}
+
+				$type = strtolower(trim($link->getAttribute('type')));
+				$path = strtolower((string) parse_url($href, PHP_URL_PATH));
+				$isSvg = $type === 'image/svg+xml' || str_ends_with($path, '.svg');
+				$isIco = $type === 'image/x-icon' || $type === 'image/vnd.microsoft.icon' || str_ends_with($path, '.ico');
+
+				// Klasse dominiert (Apple > SVG > Bitmap > ICO), innerhalb der Klasse die Größe.
+				$class = $isApple ? 4 : ($isSvg ? 3 : ($isIco ? 1 : 2));
+				$score = $class * 100000 + min($size > 0 ? $size : 16, 99999);
+				if ($score > $bestScore) {
+					$bestScore = $score;
+					$best = $this->normalizeUrl($href, $base);
+				}
+			}
+
+			if ($best === null) {
+				$tile = $xpath->query("//meta[translate(@name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='msapplication-tileimage']/@content")->item(0);
+				$tileUrl = $tile ? trim($tile->nodeValue ?? '') : '';
+				if ($tileUrl !== '' && !preg_match('/^(data|javascript|blob):/i', $tileUrl)) {
+					$best = $this->normalizeUrl($tileUrl, $base);
+				}
+			}
+		} catch (\Throwable $e) {
+			$best = null;
+		}
+
+		$candidate = $best ?? $origin . '/favicon.ico';
+		$scheme = strtolower((string) parse_url($candidate, PHP_URL_SCHEME));
+		if (!in_array($scheme, ['http', 'https'], true) || strlen($candidate) > 2048
+			|| filter_var($candidate, FILTER_VALIDATE_URL) === false) {
+			return $origin . '/favicon.ico';
+		}
+		return $candidate;
 	}
 
 	/**

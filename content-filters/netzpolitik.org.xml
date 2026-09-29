@@ -37,6 +37,7 @@
     <image    xpath="//meta[@property='og:image']/@content" />
     <published xpath="//time[@itemprop='datePublished']/@datetime" />
     -->
+    <donations url="https://netzpolitik.org/spenden/" />
   </metadata>
 
 </domain>

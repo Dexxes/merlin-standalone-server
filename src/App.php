@@ -30,6 +30,7 @@ use Merlin\Service\ContentFilterMerger;
 use Merlin\Service\ContentFilterValidator;
 use Merlin\Service\ExportService;
 use Merlin\Service\SiteCredentialService;
+use Merlin\Service\SupportBoxService;
 use Merlin\Service\TtsStreamService;
 use Merlin\Service\VideoStreamResolverService;
 use PDO;
@@ -69,6 +70,7 @@ final class App {
     private ?CredentialCipher $credentialCipher = null;
     private ?SiteCredentialRepository $siteCredentialRepository = null;
     private ?SiteCredentialService $siteCredentialService = null;
+    private ?SupportBoxService $supportBox = null;
 
     public function __construct() {
         $configFile = __DIR__ . '/../config/config.php';
@@ -215,6 +217,14 @@ final class App {
             $this->contentFilterRepository(),
             $this->credentialCipher(),
             $this->logger(),
+        );
+    }
+
+    public function supportBox(): SupportBoxService {
+        return $this->supportBox ??= new SupportBoxService(
+            $this->contentFilterRepository(),
+            $this->siteCredentialService(),
+            $this->userSettings(),
         );
     }
 }

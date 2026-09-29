@@ -46,7 +46,7 @@ $pages = new PageController(
 );
 $account = new AccountController($app->apiTokenRepository(), $app->apiTokenService(), $app->articles(), $app->highlights());
 $admin = new AdminController($app->users(), $app->settings(), $app->passwordHasher(), $app->contentFilterRepository(), $app->siteCredentialRepository());
-$articles = new ArticleController($app->articles(), $app->tags(), $app->contentExtractor(), $app->exportService(), $app->logger());
+$articles = new ArticleController($app->articles(), $app->tags(), $app->contentExtractor(), $app->exportService(), $app->logger(), $app->supportBox());
 $contentFilters = new ContentFilterController(
     $app->contentFilterRepository(),
     $app->contentFilterValidator(),
@@ -77,6 +77,7 @@ $publicShare = new PublicShareController(
     $app->highlights(),
     $app->ttsStream(),
     $app->sessions(),
+    $app->supportBox(),
 );
 
 $router = new Router();

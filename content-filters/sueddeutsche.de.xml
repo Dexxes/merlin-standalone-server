@@ -40,4 +40,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://produkte.sueddeutsche.de/" />
+  </paywall>
+
 </domain>

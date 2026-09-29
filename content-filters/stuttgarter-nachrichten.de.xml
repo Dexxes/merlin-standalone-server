@@ -40,4 +40,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://www.stuttgarter-nachrichten.de/produkte/" />
+  </paywall>
+
 </domain>

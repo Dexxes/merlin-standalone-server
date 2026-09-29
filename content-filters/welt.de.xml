@@ -41,4 +41,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://digital.welt.de/" />
+  </paywall>
+
 </domain>

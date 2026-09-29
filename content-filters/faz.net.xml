@@ -40,4 +40,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://abo.faz.net/" />
+  </paywall>
+
 </domain>

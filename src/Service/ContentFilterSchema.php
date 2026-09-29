@@ -92,6 +92,7 @@ final class ContentFilterSchema {
 		'json',
 		'metadata',
 		'category',
+		'paywall',
 	];
 
 	/**
@@ -108,6 +109,7 @@ final class ContentFilterSchema {
 		'json',
 		'metadata',
 		'category',
+		'paywall',
 	];
 
 	/**
@@ -198,10 +200,27 @@ final class ContentFilterSchema {
 				'image'     => ['optional' => ['xpath', 'json']],
 				'published' => ['optional' => ['xpath', 'json']],
 				'category'  => ['optional' => ['xpath', 'json']],
+				// Spenden-Seite des Mediums (Literal-URL, kein XPath). Speist die
+				// Support-Infobox im Reader (Service\SupportBoxService); der
+				// Extractor liest <metadata>-Felder nur für OG_FALLBACK_XPATHS und
+				// ignoriert dieses Feld daher beim Extrahieren.
+				'donations' => ['required' => ['url']],
 			],
 		],
 		'category' => [
 			'kind' => 'root-text',
+		],
+		'paywall' => [
+			'kind'     => 'field-group',
+			'children' => [
+				// Wie in merlin-nextcloud (Schema-Parität, damit Bundle-Dateien von dort
+				// übernommen werden können). merlin-server wertet nur <subscribe> aus (Support-Infobox,
+				// Service\SupportBoxService); <marker> wird hier (noch) nicht vom Extractor
+				// gelesen - die Paywall-Erkennung läuft über <login><paywall-marker>.
+				'marker'    => ['required' => ['xpath']],
+				// Ziel-URL des Abo-Angebots der Domain ("Abo abschliessen").
+				'subscribe' => ['required' => ['url']],
+			],
 		],
 		'note' => [
 			'kind' => 'root-text',

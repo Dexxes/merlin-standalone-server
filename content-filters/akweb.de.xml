@@ -39,4 +39,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://www.akweb.de/abo" />
+  </paywall>
+
 </domain>

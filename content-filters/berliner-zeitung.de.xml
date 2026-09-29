@@ -39,4 +39,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://www.berliner-zeitung.de/checkout" />
+  </paywall>
+
 </domain>

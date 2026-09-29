@@ -39,6 +39,11 @@
     <image    xpath="//meta[@property='og:image']/@content" />
     <published xpath="//time[@itemprop='datePublished']/@datetime" />
     -->
+    <donations url="https://support.theguardian.com/eu/one-time-checkout" />
   </metadata>
+
+  <paywall>
+    <subscribe url="https://support.theguardian.com/eu/contribute" />
+  </paywall>
 
 </domain>

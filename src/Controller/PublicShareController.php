@@ -12,6 +12,7 @@ use Merlin\Http\Request;
 use Merlin\Http\Response;
 use Merlin\I18n\Translator;
 use Merlin\Service\ContentExtractorService;
+use Merlin\Service\SupportBoxService;
 use Merlin\Service\TtsStreamService;
 
 /**
@@ -32,6 +33,7 @@ final class PublicShareController {
         private readonly HighlightRepository $highlights,
         private readonly TtsStreamService $ttsStream,
         private readonly SessionService $sessions,
+        private readonly SupportBoxService $supportBox,
     ) {
     }
 
@@ -103,6 +105,9 @@ final class PublicShareController {
             'publishedAt' => $article['published_at'],
             'readingTime' => (int) $article['reading_time'],
             'highlights' => array_map(HighlightRepository::toPublicArray(...), $highlights),
+            // Abo-/Spendenlink der Quelle; anders als im Reader immer, auch wenn der
+            // Ersteller dort ein Abo hat (Empfänger sind keine Abonnenten).
+            'supportBox' => $this->supportBox->forShare($article, (int) $share['user_id']),
         ]);
     }
 

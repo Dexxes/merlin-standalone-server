@@ -46,4 +46,8 @@
     -->
   </metadata>
 
+  <paywall>
+    <subscribe url="https://abo.spiegel.de/" />
+  </paywall>
+
 </domain>

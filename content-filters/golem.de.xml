@@ -85,4 +85,8 @@
     <published xpath="//time/@datetime" />
   </metadata>
 
+  <paywall>
+    <subscribe url="https://www.golem.de/microsite/plus/index.html" />
+  </paywall>
+
 </domain>
