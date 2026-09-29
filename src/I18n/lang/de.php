@@ -107,6 +107,7 @@ return [
     'common.backToLogin' => 'Zurück zur Anmeldung',
     'common.email' => 'E-Mail',
     'common.password' => 'Passwort',
+    'common.sourceCode' => 'Quellcode / Git-Repository',
     'common.username' => 'Benutzername',
     'contentFilters.badgeAdmin' => 'Admin',
     'contentFilters.badgeBundle' => 'Bundle',
