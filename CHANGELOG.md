@@ -11,7 +11,7 @@ All notable changes to merlin-server are documented here. Format based on
   paragraphs ("Enjoying this article from …? Consider a subscription or a
   donation") linking to the source's subscription/donation page, with the icon
   of the concrete article page (apple-touch-icon / `<link rel="icon">`, read
-  during extraction) as its own column on the left (4.5 em wide), spanning the
+  during extraction) as its own column on the left (2.5 em wide), spanning the
   full height of the box, with the text beside it vertically centred. Hidden in the reader when the user has an active
   paywall subscription login. Port from merlin-nextcloud; the content-filter
   schema now knows `<paywall><subscribe>` and `<metadata><donations>` and the
